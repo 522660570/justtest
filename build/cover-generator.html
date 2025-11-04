@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursor Manager 封面生成器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+        }
+        
+        .preview-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .canvas-wrapper {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        
+        .size-info {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-height: 800px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        
+        .controls::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .controls::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        .controls::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .section-title {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 15px;
+            margin-top: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        label {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+        
+        input[type="text"],
+        input[type="color"],
+        input[type="range"],
+        select,
+        textarea {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        
+        input[type="text"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        input[type="range"] {
+            padding: 0;
+        }
+        
+        .color-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .color-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="color"] {
+            width: 50px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .range-value {
+            display: inline-block;
+            min-width: 40px;
+            text-align: right;
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            grid-column: span 2;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .info-box {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .preset-btn {
+            padding: 8px 12px;
+            font-size: 12px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .preset-btn:hover {
+            border-color: #667eea;
+            background: #f0f7ff;
+        }
+        
+        @media (max-width: 1200px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <span>🎨</span>
+            <span>Cursor Manager 封面生成器</span>
+        </h1>
+        <p class="subtitle">为你的项目创建专业的封面图片，适用于 README、文档、社交媒体分享</p>
+        
+        <div class="content">
+            <!-- 预览区域 -->
+            <div class="preview-section">
+                <div class="canvas-wrapper">
+                    <canvas id="canvas" width="1200" height="630"></canvas>
+                </div>
+                <div class="size-info">📐 1200 × 630 像素（适合社交媒体分享）</div>
+                
+                <div class="buttons">
+                    <button class="btn-primary" onclick="downloadImage()">📥 下载封面图片 (PNG)</button>
+                    <button class="btn-secondary" onclick="downloadForREADME()">📄 下载 README 版本</button>
+                    <button class="btn-secondary" onclick="downloadSquare()">⬛ 下载正方形版本</button>
+                </div>
+                
+                <div class="info-box">
+                    <strong>💡 使用建议：</strong><br>
+                    • <strong>社交媒体分享：</strong>使用默认尺寸 1200×630<br>
+                    • <strong>README 顶部：</strong>使用 README 版本 1200×400<br>
+                    • <strong>GitHub 社交图：</strong>使用默认尺寸<br>
+                    • <strong>头像/图标：</strong>使用正方形版本 800×800
+                </div>
+            </div>
+            
+            <!-- 控制面板 -->
+            <div class="controls">
+                <!-- 文本内容 -->
+                <div class="section-title">📝 文本内容</div>
+                
+                <div class="control-group">
+                    <label>主标题</label>
+                    <input type="text" id="title" value="Cursor Manager" oninput="drawCover()">
+                </div>
+                
+                <div class="control-group">
+                    <label>副标题</label>
+                    <textarea id="subtitle" oninput="drawCover()">AI 智能代码管理工具
+专业 • 高效 • 易用</textarea>
+                </div>
+                
+                <div class="control-group">
+                    <label>标语/描述</label>
+                    <input type="text" id="tagline" value="让编程更智能" oninput="drawCover()">
+                </div>
+                
+                <!-- 样式设置 -->
+                <div class="section-title">🎨 样式设置</div>
+                
+                <div class="control-group">
+                    <label>布局样式</label>
+                    <select id="layout" onchange="drawCover()">
+                        <option value="center">居中对齐</option>
+                        <option value="left">左对齐</option>
+                        <option value="right">右对齐</option>
+                        <option value="split">分屏布局</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>背景样式</label>
+                    <select id="bgStyle" onchange="drawCover()">
+                        <option value="gradient">渐变背景</option>
+                        <option value="solid">纯色背景</option>
+                        <option value="pattern">几何图案</option>
+                        <option value="wave">波浪背景</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>背景颜色</label>
+                    <div class="color-inputs">
+                        <div class="color-input">
+                            <input type="color" id="bgColor1" value="#667eea" onchange="drawCover()">
+                            <span>颜色 1</span>
+                        </div>
+                        <div class="color-input">
+                            <input type="color" id="bgColor2" value="#764ba2" onchange="drawCover()">
+                            <span>颜色 2</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <label>文字颜色</label>
+                    <input type="color" id="textColor" value="#ffffff" onchange="drawCover()">
+                </div>
+                
+                <!-- 字体大小 -->
+                <div class="section-title">📏 字体设置</div>
+                
+                <div class="control-group">
+                    <label>主标题大小: <span class="range-value" id="titleSizeValue">80</span>px</label>
+                    <input type="range" id="titleSize" min="40" max="120" value="80" 
+                           oninput="updateValue('titleSize', 'titleSizeValue'); drawCover()">
+                </div>
+                
+                <div class="control-group">
+                    <label>副标题大小: <span class="range-value" id="subtitleSizeValue">28</span>px</label>
+                    <input type="range" id="subtitleSize" min="16" max="48" value="28" 
+                           oninput="updateValue('subtitleSize', 'subtitleSizeValue'); drawCover()">
+                </div>
+                
+                <div class="control-group">
+                    <label>标语大小: <span class="range-value" id="taglineSizeValue">24</span>px</label>
+                    <input type="range" id="taglineSize" min="12" max="40" value="24" 
+                           oninput="updateValue('taglineSize', 'taglineSizeValue'); drawCover()">
+                </div>
+                
+                <!-- 装饰元素 -->
+                <div class="section-title">✨ 装饰元素</div>
+                
+                <div class="control-group">
+                    <label>显示图标/Logo</label>
+                    <select id="showIcon" onchange="drawCover()">
+                        <option value="yes">显示</option>
+                        <option value="no">隐藏</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>图标文字</label>
+                    <input type="text" id="iconText" value="C" maxlength="2" oninput="drawCover()">
+                </div>
+                
+                <div class="control-group">
+                    <label>装饰图案</label>
+                    <select id="decoration" onchange="drawCover()">
+                        <option value="none">无</option>
+                        <option value="dots">圆点</option>
+                        <option value="lines">线条</option>
+                        <option value="circles">圆环</option>
+                        <option value="stars">星星</option>
+                    </select>
+                </div>
+                
+                <!-- 快速预设 -->
+                <div class="section-title">⚡ 快速预设</div>
+                
+                <div class="preset-grid">
+                    <button class="preset-btn" onclick="applyPreset('purple')">💜 紫色梦幻</button>
+                    <button class="preset-btn" onclick="applyPreset('blue')">💙 蓝色科技</button>
+                    <button class="preset-btn" onclick="applyPreset('green')">💚 绿色清新</button>
+                    <button class="preset-btn" onclick="applyPreset('orange')">🧡 橙色活力</button>
+                    <button class="preset-btn" onclick="applyPreset('dark')">🖤 深色模式</button>
+                    <button class="preset-btn" onclick="applyPreset('light')">🤍 浅色简约</button>
+                </div>
+                
+                <button class="btn-secondary" onclick="resetDefaults()" style="margin-top: 10px;">
+                    🔄 重置为默认
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        function drawCover() {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // 获取配置
+            const title = document.getElementById('title').value;
+            const subtitle = document.getElementById('subtitle').value;
+            const tagline = document.getElementById('tagline').value;
+            const layout = document.getElementById('layout').value;
+            const bgStyle = document.getElementById('bgStyle').value;
+            const bgColor1 = document.getElementById('bgColor1').value;
+            const bgColor2 = document.getElementById('bgColor2').value;
+            const textColor = document.getElementById('textColor').value;
+            const titleSize = parseInt(document.getElementById('titleSize').value);
+            const subtitleSize = parseInt(document.getElementById('subtitleSize').value);
+            const taglineSize = parseInt(document.getElementById('taglineSize').value);
+            const showIcon = document.getElementById('showIcon').value === 'yes';
+            const iconText = document.getElementById('iconText').value;
+            const decoration = document.getElementById('decoration').value;
+            
+            // 清空画布
+            ctx.clearRect(0, 0, width, height);
+            
+            // 绘制背景
+            drawBackground(bgStyle, bgColor1, bgColor2, width, height);
+            
+            // 绘制装饰元素
+            if (decoration !== 'none') {
+                drawDecoration(decoration, bgColor1, bgColor2, width, height);
+            }
+            
+            // 绘制内容
+            ctx.fillStyle = textColor;
+            
+            if (layout === 'center') {
+                drawCenterLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height);
+            } else if (layout === 'left') {
+                drawLeftLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height);
+            } else if (layout === 'right') {
+                drawRightLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height);
+            } else if (layout === 'split') {
+                drawSplitLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height);
+            }
+        }
+        
+        function drawBackground(style, color1, color2, width, height) {
+            if (style === 'gradient') {
+                const gradient = ctx.createLinearGradient(0, 0, width, height);
+                gradient.addColorStop(0, color1);
+                gradient.addColorStop(1, color2);
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+            } else if (style === 'solid') {
+                ctx.fillStyle = color1;
+                ctx.fillRect(0, 0, width, height);
+            } else if (style === 'pattern') {
+                // 渐变背景 + 几何图案
+                const gradient = ctx.createLinearGradient(0, 0, width, height);
+                gradient.addColorStop(0, color1);
+                gradient.addColorStop(1, color2);
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+                
+                // 添加半透明几何图案
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                for (let i = 0; i < 20; i++) {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    const size = 50 + Math.random() * 100;
+                    ctx.fillRect(x, y, size, size);
+                }
+            } else if (style === 'wave') {
+                // 渐变背景
+                const gradient = ctx.createLinearGradient(0, 0, width, height);
+                gradient.addColorStop(0, color1);
+                gradient.addColorStop(1, color2);
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+                
+                // 波浪装饰
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.beginPath();
+                ctx.moveTo(0, height * 0.7);
+                for (let x = 0; x <= width; x += 10) {
+                    const y = height * 0.7 + Math.sin(x * 0.01) * 50;
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(width, height);
+                ctx.lineTo(0, height);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        
+        function drawDecoration(type, color1, color2, width, height) {
+            ctx.save();
+            ctx.globalAlpha = 0.1;
+            
+            if (type === 'dots') {
+                for (let i = 0; i < 50; i++) {
+                    ctx.fillStyle = Math.random() > 0.5 ? color1 : color2;
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    const r = 2 + Math.random() * 6;
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else if (type === 'lines') {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                for (let i = 0; i < 15; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(Math.random() * width, Math.random() * height);
+                    ctx.lineTo(Math.random() * width, Math.random() * height);
+                    ctx.stroke();
+                }
+            } else if (type === 'circles') {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                for (let i = 0; i < 10; i++) {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    const r = 20 + Math.random() * 60;
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            } else if (type === 'stars') {
+                ctx.fillStyle = '#ffffff';
+                for (let i = 0; i < 30; i++) {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    const size = 3 + Math.random() * 5;
+                    drawStar(ctx, x, y, size);
+                }
+            }
+            
+            ctx.restore();
+        }
+        
+        function drawStar(ctx, x, y, size) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.beginPath();
+            for (let i = 0; i < 5; i++) {
+                ctx.lineTo(0, -size);
+                ctx.translate(0, -size);
+                ctx.rotate(Math.PI * 2 / 5);
+                ctx.lineTo(0, size * 0.4);
+                ctx.translate(0, size * 0.4);
+                ctx.rotate(-Math.PI * 4 / 5);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+        
+        function drawCenterLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height) {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            let yOffset = showIcon ? -80 : -40;
+            
+            // 绘制图标
+            if (showIcon) {
+                drawIcon(centerX, centerY + yOffset - 60, 80, iconText, textColor);
+            }
+            
+            // 主标题
+            ctx.font = `bold ${titleSize}px "Arial Black", Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(title, centerX, centerY + yOffset);
+            
+            // 副标题
+            yOffset += titleSize + 20;
+            ctx.font = `${subtitleSize}px Arial, sans-serif`;
+            const lines = subtitle.split('\n');
+            lines.forEach((line, index) => {
+                ctx.fillText(line, centerX, centerY + yOffset + (index * subtitleSize * 1.3));
+            });
+            
+            // 标语
+            if (tagline) {
+                yOffset += lines.length * subtitleSize * 1.3 + 20;
+                ctx.font = `italic ${taglineSize}px Arial, sans-serif`;
+                ctx.globalAlpha = 0.8;
+                ctx.fillText(tagline, centerX, centerY + yOffset);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        function drawLeftLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height) {
+            const leftX = 100;
+            const centerY = height / 2;
+            
+            let yOffset = showIcon ? -80 : -40;
+            
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            
+            // 绘制图标
+            if (showIcon) {
+                drawIcon(leftX + 40, centerY + yOffset - 60, 80, iconText, textColor);
+            }
+            
+            // 主标题
+            ctx.font = `bold ${titleSize}px "Arial Black", Arial, sans-serif`;
+            ctx.fillText(title, leftX, centerY + yOffset);
+            
+            // 副标题
+            yOffset += titleSize + 20;
+            ctx.font = `${subtitleSize}px Arial, sans-serif`;
+            const lines = subtitle.split('\n');
+            lines.forEach((line, index) => {
+                ctx.fillText(line, leftX, centerY + yOffset + (index * subtitleSize * 1.3));
+            });
+            
+            // 标语
+            if (tagline) {
+                yOffset += lines.length * subtitleSize * 1.3 + 20;
+                ctx.font = `italic ${taglineSize}px Arial, sans-serif`;
+                ctx.globalAlpha = 0.8;
+                ctx.fillText(tagline, leftX, centerY + yOffset);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        function drawRightLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height) {
+            const rightX = width - 100;
+            const centerY = height / 2;
+            
+            let yOffset = showIcon ? -80 : -40;
+            
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            
+            // 绘制图标
+            if (showIcon) {
+                drawIcon(rightX - 40, centerY + yOffset - 60, 80, iconText, textColor);
+            }
+            
+            // 主标题
+            ctx.font = `bold ${titleSize}px "Arial Black", Arial, sans-serif`;
+            ctx.fillText(title, rightX, centerY + yOffset);
+            
+            // 副标题
+            yOffset += titleSize + 20;
+            ctx.font = `${subtitleSize}px Arial, sans-serif`;
+            const lines = subtitle.split('\n');
+            lines.forEach((line, index) => {
+                ctx.fillText(line, rightX, centerY + yOffset + (index * subtitleSize * 1.3));
+            });
+            
+            // 标语
+            if (tagline) {
+                yOffset += lines.length * subtitleSize * 1.3 + 20;
+                ctx.font = `italic ${taglineSize}px Arial, sans-serif`;
+                ctx.globalAlpha = 0.8;
+                ctx.fillText(tagline, rightX, centerY + yOffset);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        function drawSplitLayout(title, subtitle, tagline, titleSize, subtitleSize, taglineSize, showIcon, iconText, textColor, width, height) {
+            const leftX = width * 0.3;
+            const centerY = height / 2;
+            
+            // 左侧图标
+            if (showIcon) {
+                drawIcon(leftX, centerY, 120, iconText, textColor);
+            }
+            
+            // 右侧文字
+            const rightX = width * 0.6;
+            let yOffset = -60;
+            
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            
+            // 主标题
+            ctx.font = `bold ${titleSize}px "Arial Black", Arial, sans-serif`;
+            ctx.fillText(title, rightX, centerY + yOffset);
+            
+            // 副标题
+            yOffset += titleSize + 20;
+            ctx.font = `${subtitleSize}px Arial, sans-serif`;
+            const lines = subtitle.split('\n');
+            lines.forEach((line, index) => {
+                ctx.fillText(line, rightX, centerY + yOffset + (index * subtitleSize * 1.3));
+            });
+            
+            // 标语
+            if (tagline) {
+                yOffset += lines.length * subtitleSize * 1.3 + 20;
+                ctx.font = `italic ${taglineSize}px Arial, sans-serif`;
+                ctx.globalAlpha = 0.8;
+                ctx.fillText(tagline, rightX, centerY + yOffset);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        function drawIcon(x, y, size, text, color) {
+            ctx.save();
+            
+            // 绘制圆形背景
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.beginPath();
+            ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 绘制文字
+            ctx.fillStyle = color;
+            ctx.font = `bold ${size * 0.6}px "Arial Black", Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x, y);
+            
+            ctx.restore();
+        }
+        
+        function updateValue(inputId, displayId) {
+            const value = document.getElementById(inputId).value;
+            document.getElementById(displayId).textContent = value;
+        }
+        
+        function downloadImage() {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'cursor-manager-cover.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        function downloadForREADME() {
+            // 创建 1200x400 的画布用于 README
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 1200;
+            tempCanvas.height = 400;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // 复制当前画布到临时画布（裁剪中间部分）
+            tempCtx.drawImage(canvas, 0, 115, 1200, 400, 0, 0, 1200, 400);
+            
+            tempCanvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'cursor-manager-readme.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        function downloadSquare() {
+            // 创建 800x800 的正方形画布
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 800;
+            tempCanvas.height = 800;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // 复制并缩放
+            tempCtx.drawImage(canvas, 200, 0, 800, 630, 0, 85, 800, 630);
+            
+            tempCanvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'cursor-manager-square.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        function resetDefaults() {
+            document.getElementById('title').value = 'Cursor Manager';
+            document.getElementById('subtitle').value = 'AI 智能代码管理工具\n专业 • 高效 • 易用';
+            document.getElementById('tagline').value = '让编程更智能';
+            document.getElementById('layout').value = 'center';
+            document.getElementById('bgStyle').value = 'gradient';
+            document.getElementById('bgColor1').value = '#667eea';
+            document.getElementById('bgColor2').value = '#764ba2';
+            document.getElementById('textColor').value = '#ffffff';
+            document.getElementById('titleSize').value = '80';
+            document.getElementById('subtitleSize').value = '28';
+            document.getElementById('taglineSize').value = '24';
+            document.getElementById('showIcon').value = 'yes';
+            document.getElementById('iconText').value = 'C';
+            document.getElementById('decoration').value = 'none';
+            
+            updateValue('titleSize', 'titleSizeValue');
+            updateValue('subtitleSize', 'subtitleSizeValue');
+            updateValue('taglineSize', 'taglineSizeValue');
+            
+            drawCover();
+        }
+        
+        function applyPreset(preset) {
+            const presets = {
+                purple: {
+                    bgColor1: '#667eea',
+                    bgColor2: '#764ba2',
+                    textColor: '#ffffff',
+                    bgStyle: 'gradient',
+                    decoration: 'dots'
+                },
+                blue: {
+                    bgColor1: '#2196F3',
+                    bgColor2: '#1976D2',
+                    textColor: '#ffffff',
+                    bgStyle: 'wave',
+                    decoration: 'none'
+                },
+                green: {
+                    bgColor1: '#4CAF50',
+                    bgColor2: '#2E7D32',
+                    textColor: '#ffffff',
+                    bgStyle: 'gradient',
+                    decoration: 'circles'
+                },
+                orange: {
+                    bgColor1: '#FF9800',
+                    bgColor2: '#F57C00',
+                    textColor: '#ffffff',
+                    bgStyle: 'pattern',
+                    decoration: 'none'
+                },
+                dark: {
+                    bgColor1: '#212121',
+                    bgColor2: '#424242',
+                    textColor: '#ffffff',
+                    bgStyle: 'gradient',
+                    decoration: 'lines'
+                },
+                light: {
+                    bgColor1: '#f5f5f5',
+                    bgColor2: '#e0e0e0',
+                    textColor: '#333333',
+                    bgStyle: 'solid',
+                    decoration: 'dots'
+                }
+            };
+            
+            const config = presets[preset];
+            if (config) {
+                document.getElementById('bgColor1').value = config.bgColor1;
+                document.getElementById('bgColor2').value = config.bgColor2;
+                document.getElementById('textColor').value = config.textColor;
+                document.getElementById('bgStyle').value = config.bgStyle;
+                document.getElementById('decoration').value = config.decoration;
+                drawCover();
+            }
+        }
+        
+        // 初始化
+        drawCover();
+    </script>
+</body>
+</html>
+
+
+
+

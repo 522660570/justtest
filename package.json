@@ -1,0 +1,189 @@
+{
+  "name": "cursor-manager-vue",
+  "version": "1.0.0",
+  "description": "Cursor AI账号管理工具",
+  "author": "Li <522660570@qq.com>",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron-build": "npm run build && electron-builder",
+    "dist": "npm run build && electron-builder --publish=never",
+    
+    "build-exe": "npm run build && electron-builder --win portable --x64",
+    "build-installer": "npm run build && electron-builder --win nsis --x64",
+    
+    "build:win-x64": "npm run build && electron-builder --win --x64",
+    "build:win-ia32": "npm run build && electron-builder --win --ia32",
+    "build:win-arm64": "npm run build && electron-builder --win --arm64",
+    "build:win-all": "npm run build && electron-builder --win --x64 --ia32 --arm64",
+    
+    "build:mac-x64": "npm run build && electron-builder --mac --x64",
+    "build:mac-arm64": "npm run build && electron-builder --mac --arm64",
+    "build:mac-universal": "npm run build && electron-builder --mac universal",
+    "build:mac-all": "npm run build && electron-builder --mac --x64 --arm64 universal",
+    
+    "build:linux-x64": "npm run build && electron-builder --linux --x64",
+    "build:linux-arm64": "npm run build && electron-builder --linux --arm64",
+    "build:linux-armv7l": "npm run build && electron-builder --linux --armv7l",
+    "build:linux-all": "npm run build && electron-builder --linux --x64 --arm64 --armv7l",
+    
+    "build:all-platforms": "npm run build && electron-builder -mwl",
+    "build:all-full": "npm run build && electron-builder -mwl --x64 --arm64",
+    
+    "check-icons": "node scripts/convert-icons.js"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.0",
+    "axios": "^1.6.0",
+    "element-plus": "^2.4.0",
+    "sqlite3": "^5.1.7",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^8.2.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0",
+    "terser": "^5.19.0",
+    "vite": "^5.0.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.cursor.manager",
+    "productName": "Cursor续杯工具",
+    "publish": null,
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "icon": "build/icon.ico",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/@types/**/*",
+      "!node_modules/.cache/**/*",
+      "!node_modules/**/README.md",
+      "!node_modules/**/CHANGELOG.md",
+      "!node_modules/**/LICENSE",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.map",
+      "!node_modules/**/test/**/*",
+      "!node_modules/**/tests/**/*",
+      "!node_modules/**/docs/**/*",
+      "!node_modules/**/example/**/*",
+      "!node_modules/**/examples/**/*"
+    ],
+    "portable": {
+      "artifactName": "${productName}_${arch}.exe",
+      "requestExecutionLevel": "admin",
+      "useZip": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-${version}-installer.exe",
+      "differentialPackage": false
+    },
+    "compression": "maximum",
+    "npmRebuild": false,
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "requestedExecutionLevel": "requireAdministrator",
+      "artifactName": "${productName}_${arch}.${ext}",
+      "verifyUpdateCodeSignature": false,
+      "extraResources": [
+        {
+          "from": "resources/",
+          "to": "resources/",
+          "filter": ["**/*"]
+        }
+      ],
+      "sign": null,
+      "forceCodeSigning": false
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "artifactName": "${productName}_mac_${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": null,
+      "entitlementsInherit": null,
+      "extraResources": [
+        {
+          "from": "resources/",
+          "to": "resources/",
+          "filter": ["**/*"]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "Development",
+      "artifactName": "${productName}_linux_${arch}.${ext}",
+      "executableName": "cursor-manager",
+      "synopsis": "Cursor AI账号管理工具",
+      "description": "用于管理和优化Cursor AI的工具",
+      "desktop": {
+        "Name": "Cursor续杯工具",
+        "Comment": "Cursor AI账号管理工具",
+        "Categories": "Development;Utility;"
+      }
+    },
+    "dmg": {
+      "background": null,
+      "icon": "build/icon.icns",
+      "iconSize": 100,
+      "contents": [
+        {
+          "x": 380,
+          "y": 280,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 110,
+          "y": 280,
+          "type": "file"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "electronLanguages": ["zh-CN", "en-US"]
+  }
+}

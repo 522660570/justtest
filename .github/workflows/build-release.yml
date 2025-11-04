@@ -1,0 +1,163 @@
+name: Build Portable Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 1.0.0)'
+        required: false
+
+# 添加权限配置 - 允许创建 releases
+permissions:
+  contents: write  # 允许创建 release 和上传文件
+
+jobs:
+  # Windows 构建 - 分架构打包
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建前端
+        run: npm run build
+
+      - name: 打包 Windows Portable ${{ matrix.arch }}
+        run: npx electron-builder --win portable --${{ matrix.arch }} --publish=never
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: dist-electron/*.exe
+          retention-days: 7
+
+  # macOS 构建 - 分架构打包
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建前端
+        run: npm run build
+
+      - name: 打包 macOS ${{ matrix.arch }}
+        run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish=never
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist-electron/*.dmg
+          retention-days: 7
+
+  # Linux 构建 - 分架构打包
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建前端
+        run: npm run build
+
+      - name: 打包 Linux AppImage ${{ matrix.arch }}
+        run: npx electron-builder --linux AppImage --${{ matrix.arch }} --publish=never
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist-electron/*.AppImage
+          retention-days: 7
+
+  # 创建 Release
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 显示文件结构
+        run: ls -R artifacts
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传到 Release
+        run: |
+          echo "✅ Release 创建成功！"
+          echo "📦 包含以下可直接运行的文件："
+          echo ""
+          echo "Windows (双击运行):"
+          echo "  • Cursor Manager-1.0.0-x64.exe - Intel/AMD 64位系统"
+          echo "  • Cursor Manager-1.0.0-arm64.exe - ARM64设备 (如Surface Pro X)"
+          echo ""
+          echo "macOS (双击打开):"
+          echo "  • Cursor Manager-1.0.0-mac-x64.dmg - Intel芯片Mac"
+          echo "  • Cursor Manager-1.0.0-mac-arm64.dmg - Apple Silicon (M1/M2/M3)"
+          echo ""
+          echo "Linux (chmod +x 后运行):"
+          echo "  • Cursor Manager-1.0.0-linux-x64.AppImage - Intel/AMD 64位"
+          echo "  • Cursor Manager-1.0.0-linux-arm64.AppImage - ARM64设备"
+
