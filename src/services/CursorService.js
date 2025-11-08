@@ -300,13 +300,43 @@ class CursorService {
       }
 
       const result = await api.execCommand(command)
-      const isRunning = result.stdout && result.stdout.trim().length > 0
+      
+      // ⚠️ 修复：更严格的进程检查逻辑
+      let isRunning = false
+      const output = result.stdout ? result.stdout.trim() : ''
+      
+      if (this.platform === 'win32') {
+        // Windows tasklist 输出格式：
+        // - 找到进程：'"Cursor.exe","12345","Console","1","123,456 K"'
+        // - 未找到：'INFO: No tasks are running which match the specified criteria.'
+        // 或者 taskkill 的错误输出也可能被捕获
+        
+        // 只有当输出包含 .exe 且是 CSV 格式时才认为进程存在
+        isRunning = output.includes('Cursor.exe') && 
+                   output.includes('"') && 
+                   !output.toLowerCase().includes('no tasks') &&
+                   !output.toLowerCase().includes('not found')
+      } else {
+        // macOS/Linux: pgrep 找到进程时会输出PID（纯数字）
+        // 没找到时没有输出（或退出码非0）
+        isRunning = output.length > 0 && /^\d+/.test(output)
+      }
+      
+      console.log(`🔍 进程检查结果 (${this.platform}):`, {
+        command,
+        hasOutput: !!output,
+        outputLength: output.length,
+        outputPreview: output.substring(0, 150),
+        isRunning,
+        exitCode: result.exitCode
+      })
 
       return {
         running: isRunning,
-        processes: isRunning ? result.stdout.trim().split('\n') : []
+        processes: isRunning ? output.split('\n') : []
       }
     } catch (error) {
+      console.log('⚠️ 检查进程时出错（视为未运行）:', error.message)
       return {
         running: false,
         processes: [],
@@ -494,30 +524,59 @@ class CursorService {
     try {
       console.log('🔄 开始完整的机器ID重置流程（参考cursor-free-vip-main）...')
       
+      // ⚠️ 重要：检查 Cursor 是否正在运行
+      console.log('🔍 检查 Cursor 进程状态...')
+      const processStatus = await this.checkCursorProcess()
+      if (processStatus.running) {
+        console.error('❌ Cursor 正在运行，无法修改文件（文件被锁定）')
+        return {
+          success: false,
+          error: 'Cursor is running. Please close Cursor first.',
+          errorType: 'CURSOR_RUNNING',
+          message: 'Cursor正在运行，文件被锁定。请先关闭Cursor再重试。'
+        }
+      }
+      console.log('✅ Cursor 未运行，可以继续')
+      
       // 1. 生成新的所有ID（参考 totally_reset_cursor.py generate_new_ids）
       const newIds = this.generateAllMachineIds()
       console.log('✅ 生成新的机器ID集合:', Object.keys(newIds))
       
-      // 2. 更新 storage.json（这是关键！）
+      // 2. 更新 storage.json（可选步骤 - 失败不阻断）
       console.log('🔧 步骤1: 更新 storage.json...')
       const storageResult = await this.updateStorageJson(newIds)
       if (!storageResult.success) {
-        console.warn('⚠️ storage.json 更新失败:', storageResult.error)
+        console.warn('⚠️ storage.json 更新失败（跳过）:', storageResult.error)
+        console.warn('💡 storage.json 非必需，将继续更新 SQLite 和注册表')
+        // ⚠️ 不阻断流程，继续执行后续步骤
       } else {
         console.log('✅ storage.json 更新成功')
       }
       
-      // 3. 更新 SQLite 数据库中的 telemetry 字段
-      console.log('🔧 步骤2: 更新 SQLite 中的 telemetry 字段...')
+      // 3. 清理数据库中的问题键（参考 CursorPool_Client）
+      console.log('🔧 步骤2: 清理数据库中的 cursorai/serverConfig...')
+      try {
+        const deleteSQL = "DELETE FROM ItemTable WHERE key = 'cursorai/serverConfig'"
+        const deleteResult = await api.sqliteQuery(this.cursorPaths.sqlite, deleteSQL, [])
+        console.log('✅ 成功删除 cursorai/serverConfig (影响行数:', deleteResult.changes || 0, ')')
+      } catch (error) {
+        console.warn('⚠️ 清理 serverConfig 失败（可能不存在）:', error.message)
+      }
+      
+      // 4. 更新 SQLite 数据库中的 telemetry 字段（重要！）
+      console.log('🔧 步骤3: 更新 SQLite 中的 telemetry 字段...')
       const sqliteResult = await this.updateSqliteMachineIds(newIds)
       if (!sqliteResult.success) {
-        console.warn('⚠️ SQLite telemetry 更新失败:', sqliteResult.error)
+        console.error('❌ SQLite telemetry 更新失败:', sqliteResult.error)
+        // ⚠️ SQLite 更新失败会影响功能，但也不阻断流程
+        console.warn('💡 将继续执行后续步骤（machineId文件 + 注册表）')
       } else {
         console.log('✅ SQLite telemetry 更新成功')
       }
       
-      // 4. 更新 machineId 文件
-      console.log('🔧 步骤3: 更新 machineId 文件...')
+      // 5. 更新 machineId 文件
+      console.log('🔧 步骤4: 更新 machineId 文件...')
+      let machineIdResult = { success: false }
       try {
         // 备份原有 machineId
         try {
@@ -525,26 +584,75 @@ class CursorService {
           await api.fsWriteFile(this.cursorPaths.machineId + '.backup', originalId, 'utf8')
           console.log('✅ 已备份原有 machineId')
         } catch (error) {
-          console.log('⚠️ 没有找到现有 machineId')
+          console.log('⚠️ 没有找到现有 machineId（将创建新文件）')
         }
         
         // 写入新的 machineId（使用 devDeviceId）
         await api.fsWriteFile(this.cursorPaths.machineId, newIds['telemetry.devDeviceId'], 'utf8')
-        console.log('✅ 新 machineId 文件已写入')
+        console.log('✅ 新 machineId 文件已写入:', newIds['telemetry.devDeviceId'])
+        machineIdResult.success = true
       } catch (error) {
-        console.warn('⚠️ machineId 文件更新失败:', error.message)
+        console.error('❌ machineId 文件更新失败:', error.message)
+        console.warn('💡 将继续执行注册表更新')
+        machineIdResult.success = false
+        machineIdResult.error = error.message
+      }
+      
+      // 6. 更新系统级机器码（Windows注册表）- 参考cursor-free-vip-main
+      console.log('🔧 步骤5: 更新系统级机器码...')
+      const systemUpdateResult = await this.updateSystemMachineIds(newIds)
+      if (!systemUpdateResult.success) {
+        console.warn('⚠️ 系统级机器码更新失败:', systemUpdateResult.error)
+        if (systemUpdateResult.needsAdmin) {
+          console.warn('⚠️ 需要管理员权限才能完全重置机器码')
+        }
+      } else {
+        console.log('✅ 系统级机器码更新成功')
       }
 
-      console.log('✅ 机器ID完整重置成功！')
-      console.log('📊 新的机器ID:')
-      Object.entries(newIds).forEach(([key, value]) => {
-        console.log(`  - ${key}: ${value.substring(0, 20)}...`)
-      })
-
-      return {
-        success: true,
-        newIds: newIds,
-        message: 'Machine ID reset successfully (complete flow)'
+      // 汇总结果
+      const summary = {
+        storageJson: storageResult.success,
+        sqlite: sqliteResult.success,
+        machineIdFile: machineIdResult.success,
+        systemRegistry: systemUpdateResult.success
+      }
+      
+      const successCount = Object.values(summary).filter(v => v).length
+      const totalSteps = Object.keys(summary).length
+      
+      console.log('═'.repeat(50))
+      console.log('📊 机器ID重置完成汇总:')
+      console.log(`  ✅ storage.json: ${summary.storageJson ? '成功' : '失败（已跳过）'}`)
+      console.log(`  ✅ SQLite数据库: ${summary.sqlite ? '成功' : '失败'}`)
+      console.log(`  ✅ machineId文件: ${summary.machineIdFile ? '成功' : '失败'}`)
+      console.log(`  ✅ Windows注册表: ${summary.systemRegistry ? '成功' : '失败/跳过'}`)
+      console.log(`  📊 成功率: ${successCount}/${totalSteps} (${Math.round(successCount/totalSteps*100)}%)`)
+      console.log('═'.repeat(50))
+      
+      if (successCount >= 3) {
+        // 只要成功3个或以上步骤就算成功
+        console.log('✅ 机器ID重置成功！（至少3个关键步骤已完成）')
+        console.log('📊 新的机器ID:')
+        Object.entries(newIds).forEach(([key, value]) => {
+          console.log(`  - ${key}: ${value.substring(0, 20)}...`)
+        })
+        
+        return {
+          success: true,
+          newIds: newIds,
+          message: 'Machine ID reset successfully',
+          summary,
+          warnings: !summary.storageJson ? ['storage.json update failed but skipped'] : []
+        }
+      } else {
+        console.error('❌ 机器ID重置失败！成功的步骤太少')
+        return {
+          success: false,
+          error: `Only ${successCount}/${totalSteps} steps succeeded`,
+          message: '关键步骤失败过多',
+          summary
+        }
       }
     } catch (error) {
       console.error('❌ 机器ID重置失败:', error)
@@ -556,18 +664,21 @@ class CursorService {
   }
 
   /**
+   * 生成UUID的辅助函数
+   */
+  generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0
+      const v = c === 'x' ? r : (r & 0x3 | 0x8)
+      return v.toString(16)
+    })
+  }
+
+  /**
    * 生成所有机器ID（参考 cursor-free-vip-main）
+   * 只生成5个字段，system.machineGuid在注册表更新时现场生成
    */
   generateAllMachineIds() {
-    // 生成 UUID
-    const generateUUID = () => {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0
-        const v = c === 'x' ? r : (r & 0x3 | 0x8)
-        return v.toString(16)
-      })
-    }
-    
     // 生成 SHA256 哈希（64字符）
     const generateHash256 = () => {
       const chars = '0123456789abcdef'
@@ -588,11 +699,13 @@ class CursorService {
       return result
     }
     
-    const devDeviceId = generateUUID()
+    const devDeviceId = this.generateUUID()
     const machineId = generateHash256()
     const macMachineId = generateHash512()
-    const sqmId = `{${generateUUID().toUpperCase()}}`
+    const sqmId = `{${this.generateUUID().toUpperCase()}}`
     
+    // ⚠️ 参考cursor-free-vip-main: 只生成5个字段
+    // system.machineGuid在update_system_ids时现场生成
     return {
       'telemetry.devDeviceId': devDeviceId,
       'telemetry.machineId': machineId,
@@ -603,32 +716,189 @@ class CursorService {
   }
 
   /**
+   * 移除 BOM (Byte Order Mark) 字符
+   */
+  removeBOM(content) {
+    if (content.charCodeAt(0) === 0xFEFF) {
+      return content.slice(1)
+    }
+    return content
+  }
+
+  /**
    * 更新 storage.json（关键步骤！）
    */
   async updateStorageJson(newIds) {
     try {
-      console.log('📄 读取 storage.json...')
+      console.log('📄 读取 storage.json...', this.cursorPaths.storage)
       
       let config = {}
       try {
-        const content = await api.fsReadFile(this.cursorPaths.storage, 'utf8')
+        let content = await api.fsReadFile(this.cursorPaths.storage, 'utf8')
+        // ⚠️ 移除 BOM 字符（如果存在）
+        content = this.removeBOM(content)
         config = JSON.parse(content)
-        console.log('✅ 成功读取 storage.json')
+        console.log('✅ 成功读取 storage.json，现有字段数:', Object.keys(config).length)
       } catch (error) {
-        console.warn('⚠️ storage.json 不存在或读取失败，将创建新文件')
+        console.warn('⚠️ storage.json 不存在或读取失败，将创建新文件:', error.message)
+        // 如果是 JSON 解析错误，尝试修复
+        if (error.message.includes('JSON') || error.message.includes('token')) {
+          console.warn('⚠️ 检测到 JSON 格式错误，可能是 BOM 或格式问题，将创建新文件')
+          config = {}
+        }
       }
       
       // 更新配置（参考 cursor-free-vip-main: config.update(new_ids)）
+      // 所有newIds都直接写入storage.json
       Object.assign(config, newIds)
       
-      // 写回文件
-      await api.fsWriteFile(this.cursorPaths.storage, JSON.stringify(config, null, 2), 'utf8')
-      console.log('✅ storage.json 更新成功，已写入', Object.keys(newIds).length, '个字段')
+      // 写回文件（确保 UTF-8 without BOM）
+      const jsonString = JSON.stringify(config, null, 4)
+      
+      // 尝试写入，如果失败尝试解锁
+      try {
+        await api.fsWriteFile(this.cursorPaths.storage, jsonString, 'utf8')
+        console.log('✅ storage.json 更新成功，已写入', Object.keys(newIds).length, '个字段')
+      } catch (writeError) {
+        if (writeError.message.includes('EPERM') && this.platform === 'win32') {
+          console.warn('⚠️ 文件被锁定，尝试解锁...')
+          // 尝试解锁文件
+          const unlockResult = await window.electronAPI.unlockFile(this.cursorPaths.storage)
+          if (unlockResult.success) {
+            console.log('✅ 文件解锁成功，重试写入...')
+            await api.fsWriteFile(this.cursorPaths.storage, jsonString, 'utf8')
+            console.log('✅ storage.json 重试写入成功')
+          } else {
+            throw writeError // 解锁失败，抛出原错误
+          }
+        } else {
+          throw writeError
+        }
+      }
+      
+      console.log('📊 新写入的字段:', Object.keys(newIds).join(', '))
+      
+      // 验证写入（读取回来检查）
+      try {
+        const verifyContent = await api.fsReadFile(this.cursorPaths.storage, 'utf8')
+        const verifyData = JSON.parse(this.removeBOM(verifyContent))
+        console.log('🔍 验证写入结果:')
+        Object.keys(newIds).forEach(key => {
+          const exists = verifyData[key] === newIds[key]
+          console.log(`  ${exists ? '✅' : '❌'} ${key}:`, exists ? '已写入' : '未找到')
+        })
+      } catch (error) {
+        console.warn('⚠️ 验证写入失败:', error.message)
+      }
       
       return { success: true }
     } catch (error) {
-      console.error('❌ storage.json 更新失败:', error)
+      console.error('❌ storage.json 更新失败（已跳过，不影响后续步骤）:', error.message)
       return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * 更新系统级机器码（Windows注册表）
+   * 参考 cursor-free-vip-main 的 update_system_ids()
+   * ⚠️ 注意：system.machineGuid在这里现场生成，不使用newIds中的值
+   */
+  async updateSystemMachineIds(newIds) {
+    if (!isElectron) {
+      console.log('🔧 浏览器环境：跳过系统级更新')
+      return { success: true, message: 'Browser mode - system IDs skipped' }
+    }
+
+    try {
+      console.log('🔧 开始更新系统级机器码...')
+      
+      if (this.platform === 'win32') {
+        // Windows: 更新注册表中的 MachineGuid 和 SQMClient MachineId
+        console.log('🪟 Windows平台：更新注册表...')
+        
+        let updatedCount = 0
+        let needsAdmin = false
+        
+        // 1. 更新 HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid
+        // ⚠️ 参考cursor-free-vip-main: 现场生成新的UUID
+        const newMachineGuid = this.generateUUID()
+        console.log('📝 更新 MachineGuid...', newMachineGuid)
+        const machineGuidResult = await window.electronAPI.updateWindowsRegistry(
+          'HKLM\\SOFTWARE\\Microsoft\\Cryptography',
+          'MachineGuid',
+          newMachineGuid
+        )
+        
+        if (machineGuidResult.success) {
+          console.log('✅ MachineGuid 更新成功:', newMachineGuid)
+          updatedCount++
+        } else {
+          console.warn('⚠️ MachineGuid 更新失败:', machineGuidResult.error)
+          if (machineGuidResult.needsAdmin) {
+            needsAdmin = true
+          }
+        }
+        
+        // 2. 更新 HKLM\SOFTWARE\Microsoft\SQMClient\MachineId
+        // ⚠️ 参考cursor-free-vip-main: 现场生成新的GUID（带大括号）
+        const newSqmId = `{${this.generateUUID().toUpperCase()}}`
+        console.log('📝 更新 SQMClient MachineId...', newSqmId)
+        const sqmIdResult = await window.electronAPI.updateWindowsRegistry(
+          'HKLM\\SOFTWARE\\Microsoft\\SQMClient',
+          'MachineId',
+          newSqmId
+        )
+        
+        if (sqmIdResult.success) {
+          console.log('✅ SQMClient MachineId 更新成功:', newSqmId)
+          updatedCount++
+        } else {
+          console.warn('⚠️ SQMClient MachineId 更新失败:', sqmIdResult.error)
+          if (sqmIdResult.needsAdmin) {
+            needsAdmin = true
+          }
+        }
+        
+        if (updatedCount > 0) {
+          console.log(`✅ Windows注册表更新完成 (${updatedCount}/2 个键值)`)
+          return {
+            success: true,
+            message: `Updated ${updatedCount} registry keys`,
+            updatedCount,
+            needsAdmin: needsAdmin && updatedCount < 2
+          }
+        } else {
+          console.error('❌ Windows注册表更新失败，没有成功更新任何键值')
+          return {
+            success: false,
+            error: 'Failed to update any registry keys',
+            needsAdmin
+          }
+        }
+      } else if (this.platform === 'darwin') {
+        // macOS: 更新系统 UUID
+        console.log('🍎 macOS平台：更新系统UUID...')
+        console.log('⚠️ macOS系统级更新需要sudo权限，暂时跳过')
+        return {
+          success: true,
+          message: 'macOS system UUID update skipped (requires sudo)',
+          skipped: true
+        }
+      } else {
+        // Linux: 通常不需要更新系统级ID
+        console.log('🐧 Linux平台：不需要更新系统级ID')
+        return {
+          success: true,
+          message: 'Linux does not require system-level ID updates',
+          skipped: true
+        }
+      }
+    } catch (error) {
+      console.error('❌ 更新系统级机器码失败:', error)
+      return {
+        success: false,
+        error: error.message
+      }
     }
   }
 
@@ -637,16 +907,28 @@ class CursorService {
    */
   async updateSqliteMachineIds(newIds) {
     try {
-      console.log('🗄️ 更新 SQLite 中的 telemetry 字段...')
+      console.log('🗄️ 更新 SQLite 中的 telemetry 字段...', this.cursorPaths.sqlite)
       
+      // 参考cursor-free-vip-main: 所有newIds都写入SQLite
+      let updateCount = 0
       for (const [key, value] of Object.entries(newIds)) {
         const sql = "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)"
         await api.sqliteQuery(this.cursorPaths.sqlite, sql, [key, value])
-        console.log(`✅ 更新 ${key}`)
+        console.log(`✅ 更新 ${key}: ${value.substring(0, 30)}...`)
+        updateCount++
       }
       
-      console.log('✅ SQLite telemetry 字段更新成功')
-      return { success: true }
+      // ⚠️ 执行 VACUUM 优化数据库（参考 Cursor_Windsurf_Reset）
+      console.log('🔧 优化数据库 (VACUUM)...')
+      try {
+        await api.sqliteQuery(this.cursorPaths.sqlite, 'VACUUM', [])
+        console.log('✅ 数据库优化完成')
+      } catch (error) {
+        console.warn('⚠️ VACUUM 执行失败（不影响功能）:', error.message)
+      }
+      
+      console.log(`✅ SQLite telemetry 字段更新成功，共更新 ${updateCount} 个字段`)
+      return { success: true, updateCount }
     } catch (error) {
       console.error('❌ SQLite telemetry 更新失败:', error)
       return { success: false, error: error.message }
@@ -666,16 +948,173 @@ class CursorService {
   }
 
   /**
-   * 获取当前机器ID
+   * 获取当前机器ID（从machineId文件）
    */
   async getCurrentMachineId() {
     try {
-      const machineId = await fs.readFile(this.cursorPaths.machineId, 'utf8')
+      const machineId = await api.fsReadFile(this.cursorPaths.machineId, 'utf8')
       return {
         success: true,
         machineId: machineId.trim()
       }
     } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  }
+
+  /**
+   * 获取完整的当前机器码信息（从所有位置）
+   * 用于调试和查看当前环境的机器码状态
+   */
+  async getAllCurrentMachineIds() {
+    await this.initialize()
+    
+    if (!isElectron) {
+      return {
+        success: false,
+        message: 'Browser environment - cannot read machine IDs'
+      }
+    }
+
+    try {
+      console.log('📊 开始读取当前环境的机器码信息...')
+      const result = {
+        platform: this.platform,
+        paths: this.cursorPaths,
+        storageJson: {},
+        sqlite: {},
+        machineIdFile: null,
+        windowsRegistry: {}
+      }
+
+      // 1. 从 storage.json 读取
+      console.log('📄 读取 storage.json...')
+      try {
+        let content = await api.fsReadFile(this.cursorPaths.storage, 'utf8')
+        // ⚠️ 移除 BOM 字符（如果存在）
+        content = this.removeBOM(content)
+        const data = JSON.parse(content)
+        
+        // 打印所有存在的字段（调试用）
+        const allKeys = Object.keys(data)
+        console.log('📊 storage.json 中的所有字段:', allKeys.length, '个')
+        const machineRelatedKeys = allKeys.filter(k => 
+          k.includes('machine') || k.includes('telemetry') || k.includes('storage')
+        )
+        console.log('🔍 机器相关字段:', machineRelatedKeys)
+        
+        result.storageJson = {
+          'telemetry.machineId': data['telemetry.machineId'] || 'Not found',
+          'telemetry.macMachineId': data['telemetry.macMachineId'] || 'Not found',
+          'telemetry.devDeviceId': data['telemetry.devDeviceId'] || 'Not found',
+          'telemetry.sqmId': data['telemetry.sqmId'] || 'Not found',
+          'storage.serviceMachineId': data['storage.serviceMachineId'] || 'Not found (字段不存在)'
+        }
+        console.log('✅ storage.json 读取成功')
+      } catch (error) {
+        console.warn('⚠️ storage.json 读取失败:', error.message)
+        result.storageJson = { error: error.message }
+      }
+
+      // 2. 从 SQLite 数据库读取
+      console.log('🗄️ 读取 SQLite 数据库...')
+      try {
+        const keys = [
+          'telemetry.machineId',
+          'telemetry.macMachineId',
+          'telemetry.devDeviceId',
+          'telemetry.sqmId',
+          'storage.serviceMachineId'
+        ]
+        
+        for (const key of keys) {
+          const rows = await api.sqliteQuery(
+            this.cursorPaths.sqlite,
+            'SELECT value FROM ItemTable WHERE key = ?',
+            [key]
+          )
+          result.sqlite[key] = rows.length > 0 ? rows[0].value : 'Not found'
+        }
+        console.log('✅ SQLite 数据库读取成功')
+      } catch (error) {
+        console.warn('⚠️ SQLite 数据库读取失败:', error.message)
+        result.sqlite = { error: error.message }
+      }
+
+      // 3. 从 machineId 文件读取
+      console.log('📁 读取 machineId 文件...')
+      try {
+        result.machineIdFile = await api.fsReadFile(this.cursorPaths.machineId, 'utf8')
+        console.log('✅ machineId 文件读取成功')
+      } catch (error) {
+        console.warn('⚠️ machineId 文件读取失败:', error.message)
+        result.machineIdFile = `Error: ${error.message}`
+      }
+
+      // 4. 从 Windows 注册表读取（仅Windows）
+      if (this.platform === 'win32') {
+        console.log('🪟 读取 Windows 注册表...')
+        
+        // 读取 MachineGuid
+        try {
+          const machineGuidResult = await window.electronAPI.readWindowsRegistry(
+            'HKLM\\SOFTWARE\\Microsoft\\Cryptography',
+            'MachineGuid'
+          )
+          result.windowsRegistry.MachineGuid = machineGuidResult.success 
+            ? machineGuidResult.value 
+            : `Error: ${machineGuidResult.error}`
+        } catch (error) {
+          result.windowsRegistry.MachineGuid = `Error: ${error.message}`
+        }
+
+        // 读取 SQMClient MachineId
+        try {
+          const sqmResult = await window.electronAPI.readWindowsRegistry(
+            'HKLM\\SOFTWARE\\Microsoft\\SQMClient',
+            'MachineId'
+          )
+          result.windowsRegistry.SQMClientMachineId = sqmResult.success 
+            ? sqmResult.value 
+            : `Error: ${sqmResult.error}`
+        } catch (error) {
+          result.windowsRegistry.SQMClientMachineId = `Error: ${error.message}`
+        }
+        
+        console.log('✅ Windows 注册表读取完成')
+      }
+
+      // 打印完整的机器码信息到控制台
+      console.log('═══════════════════════════════════════')
+      console.log('📊 当前环境的完整机器码信息：')
+      console.log('═══════════════════════════════════════')
+      console.log('\n📄 storage.json:')
+      Object.entries(result.storageJson).forEach(([key, value]) => {
+        console.log(`  ${key}:`, value)
+      })
+      console.log('\n🗄️ SQLite 数据库:')
+      Object.entries(result.sqlite).forEach(([key, value]) => {
+        console.log(`  ${key}:`, value)
+      })
+      console.log('\n📁 machineId 文件:')
+      console.log(`  ${result.machineIdFile}`)
+      if (this.platform === 'win32') {
+        console.log('\n🪟 Windows 注册表:')
+        Object.entries(result.windowsRegistry).forEach(([key, value]) => {
+          console.log(`  ${key}:`, value)
+        })
+      }
+      console.log('═══════════════════════════════════════')
+
+      return {
+        success: true,
+        data: result
+      }
+    } catch (error) {
+      console.error('❌ 读取机器码信息失败:', error)
       return {
         success: false,
         error: error.message

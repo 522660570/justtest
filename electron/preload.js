@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设备信息API
   getMacAddress: () => ipcRenderer.invoke('get-mac-address'),
   
+  // Windows注册表操作API（用于机器码重置）
+  updateWindowsRegistry: (keyPath, valueName, value) => ipcRenderer.invoke('update-windows-registry', keyPath, valueName, value),
+  readWindowsRegistry: (keyPath, valueName) => ipcRenderer.invoke('read-windows-registry', keyPath, valueName),
+  unlockFile: (filePath) => ipcRenderer.invoke('unlock-file', filePath),
+  
   // 日志相关API
   getLogPath: () => ipcRenderer.invoke('get-log-path'),
   readLogFile: (lines) => ipcRenderer.invoke('read-log-file', lines),
@@ -54,7 +59,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPurchasePage: (url) => ipcRenderer.invoke('open-purchase-page', url),
   
   // 环境检测API
-  getAppEnvironment: () => ipcRenderer.invoke('get-app-environment')
+  getAppEnvironment: () => ipcRenderer.invoke('get-app-environment'),
+  
+  // 调试模式API
+  getDebugMode: () => ipcRenderer.invoke('get-debug-mode')
 })
 
 // 在开发模式下暴露一些调试信息

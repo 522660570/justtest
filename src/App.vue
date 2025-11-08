@@ -2,6 +2,21 @@
   <div id="app">
     <!-- 自定义标题栏 -->
     <CustomTitleBar />
+    
+    <!-- 机器码调试面板 - 仅在调试模式下可用 -->
+    <el-dialog
+      v-if="debugMode"
+      v-model="showDebugPanel"
+      title="🔍 机器码调试工具"
+      width="90%"
+      :close-on-click-modal="false"
+    >
+      <MachineIdDebug />
+      <template #footer>
+        <el-button @click="showDebugPanel = false">关闭</el-button>
+      </template>
+    </el-dialog>
+    
     <div class="app-container">
       <!-- 主内容区域 -->
       <div class="main-content">
@@ -58,7 +73,6 @@
                     <span v-if="loading.purchase">正在打开...</span>
                     <span v-else>🛒 购买授权码</span>
                   </el-button>
-                  <p class="purchase-tips">支持7天、30天、90天、365天等多种时长</p>
                 </div>
               </div>
             </el-card>
@@ -123,8 +137,8 @@
                     </el-button>
                   </div>
                 <div class="status-item">
-                  <span class="status-label">当前Cursor版本：</span>
-                  <span class="status-value">{{ cursorVersion }}</span>
+                  <span class="status-label">软件版本：</span>
+                  <span class="status-value">v{{ cursorVersion }}</span>
                 </div>
               </div>
 
@@ -259,7 +273,9 @@ import AccountService from './services/AccountService'
 import LicenseService from './services/LicenseService'
 import StorageService from './services/StorageService'
 import DeviceService from './services/DeviceService'
+import VersionService from './services/VersionService'
 import CustomTitleBar from './components/CustomTitleBar.vue'
+import MachineIdDebug from './components/MachineIdDebug.vue'
 import { getDefaultPurchaseUrl, getPurchaseMessage } from './config/purchase.js'
 import { API_CONFIG, getApiUrl } from './config/api.js'
 
@@ -273,13 +289,16 @@ export default {
     InfoFilled,
     SuccessFilled,
     CircleCloseFilled,
-    CustomTitleBar
+    CustomTitleBar,
+    MachineIdDebug
   },
   setup() {
     // 🔧 响应式数据
     const licenseCode = ref('')
     const licenseData = ref(null)
     const systemNotices = ref([])
+    const debugMode = ref(false) // 调试模式开关
+    const showDebugPanel = ref(false) // 调试面板显示状态
     
     const loading = reactive({
       license: false,
@@ -304,6 +323,7 @@ export default {
     const licenseService = new LicenseService()
     const storageService = new StorageService()
     const deviceService = new DeviceService()
+    const versionService = new VersionService()
 
     // 🔧 计算属性
     const licenseStatus = computed(() => {
@@ -324,8 +344,11 @@ export default {
       return result
     })
 
+    // 获取软件版本号
+    const appVersion = ref('1.1.0')
+    
     const cursorVersion = computed(() => {
-      return '1.6.23' // 🔧 将来从CursorService获取实际版本
+      return appVersion.value
     })
 
     const membershipType = computed(() => {
@@ -653,13 +676,65 @@ export default {
           throw new Error('获取的新账号缺少email')
         }
         
-        // 🔑 关键：至少需要sessionToken或accessToken之一
-        if (!newAccount.sessionToken && !newAccount.accessToken) {
-          throw new Error('获取的新账号既没有sessionToken也没有accessToken')
+        // 🔑 关键：必须要有 sessionToken
+        if (!newAccount.sessionToken) {
+          throw new Error('获取的新账号缺少sessionToken')
+        }
+        
+        // 🔑 兼容新旧客户端策略：
+        // - 如果后端返回了 accessToken（数据库中已有，说明已通过批量刷新），直接使用（旧客户端）
+        // - 如果后端没有返回 accessToken（数据库中没有），前端调用 reftoken 接口获取（新客户端）
+        if (!newAccount.accessToken || newAccount.accessToken.trim() === '') {
+          console.log('🔧 步骤2: 后端未返回 accessToken，前端从 reftoken 接口获取...')
+          try {
+            // 确保 token 使用 URL 编码的分隔符 %3A%3A
+            let encodedToken = newAccount.sessionToken
+            if (!newAccount.sessionToken.includes('%3A%3A') && newAccount.sessionToken.includes('::')) {
+              encodedToken = newAccount.sessionToken.replace(/::/g, '%3A%3A')
+              console.log('🔧 将 :: 转换为 %3A%3A')
+            }
+            
+            const refTokenUrl = `https://token.cursorpro.com.cn/reftoken?token=${encodedToken}`
+            console.log('🔧 调用 reftoken 接口...')
+            
+            const refTokenResponse = await fetch(refTokenUrl, {
+              method: 'GET',
+              headers: {
+                'User-Agent': 'Mozilla/5.0'
+              }
+            })
+            
+            if (!refTokenResponse.ok) {
+              throw new Error(`reftoken API 请求失败: ${refTokenResponse.status} ${refTokenResponse.statusText}`)
+            }
+            
+            const refTokenResult = await refTokenResponse.json()
+            console.log('🔧 reftoken API 响应:', refTokenResult)
+            
+            if (refTokenResult.code === 0 && refTokenResult.msg === '获取成功') {
+              // 成功获取 AccessToken
+              newAccount.accessToken = refTokenResult.data.accessToken
+              newAccount.refreshToken = refTokenResult.data.accessToken // refreshToken 使用相同的值
+              console.log('✅ 从 reftoken 接口成功获取 AccessToken')
+              console.log('📊 AccessToken 长度:', newAccount.accessToken.length)
+              console.log('📊 剩余天数:', refTokenResult.data.days_left)
+              console.log('📊 过期时间:', refTokenResult.data.expire_time)
+            } else {
+              // reftoken 接口失败，直接抛出错误
+              console.error('❌ reftoken 接口失败:', refTokenResult.msg)
+              throw new Error('reftoken 接口失败: ' + refTokenResult.msg)
+            }
+          } catch (error) {
+            console.error('❌ 获取 AccessToken 失败:', error)
+            throw new Error('获取 AccessToken 失败: ' + error.message)
+          }
+        } else {
+          console.log('✅ 后端已返回 accessToken（数据库中已有，已通过批量刷新），直接使用')
+          console.log('📊 AccessToken 长度:', newAccount.accessToken.length)
         }
 
         // 3. 彻底关闭Cursor (增强版)
-        console.log('🔧 步骤2: 正在彻底关闭所有Cursor进程...')
+        console.log('🔧 步骤3: 正在彻底关闭所有Cursor进程...')
         const killResult = await cursorService.killCursorProcess()
         if (killResult.success) {
           console.log('✅ 所有Cursor进程已关闭')
@@ -673,7 +748,7 @@ export default {
         console.log('✅ 等待完成，文件应该可以修改了')
 
         // 4. 重置机器ID
-        console.log('🔧 步骤3: 正在重置机器ID...')
+        console.log('🔧 步骤4: 正在重置机器ID...')
         const resetResult = await cursorService.resetMachineId()
         if (!resetResult.success) {
           console.warn('⚠️ 机器ID重置失败:', resetResult.error)
@@ -689,15 +764,15 @@ export default {
         }
 
         // 5. 应用新账号
-        console.log('🔧 步骤4: 正在应用新账号:', newAccount.email)
+        console.log('🔧 步骤5: 正在应用新账号:', newAccount.email)
         const updateResult = await cursorService.updateAccountStorage(newAccount)
         if (!updateResult.success) {
           throw new Error('应用新账号失败: ' + updateResult.error)
         }
         console.log('✅ 账号存储更新成功')
 
-        // 5. 深度清理缓存
-        console.log('🔧 步骤5: 正在深度清理缓存...')
+        // 6. 深度清理缓存
+        console.log('🔧 步骤6: 正在深度清理缓存...')
         const cacheResult = await cursorService.cleanCursorCache()
         if (cacheResult.success) {
           console.log(`✅ 缓存清理完成: ${cacheResult.cleanedPaths}/${cacheResult.totalPaths} 个路径`)
@@ -705,12 +780,12 @@ export default {
           console.warn('⚠️ 缓存清理部分失败:', cacheResult.error)
         }
 
-        // 6. 等待缓存清理完成后再启动
-        console.log('🔧 步骤6: 等待缓存清理完全生效...')
+        // 7. 等待缓存清理完成后再启动
+        console.log('🔧 步骤7: 等待缓存清理完全生效...')
         await new Promise(resolve => setTimeout(resolve, 5000))
 
-        // 7. 启动Cursor
-        console.log('🔧 步骤7: 正在启动Cursor...')
+        // 8. 启动Cursor
+        console.log('🔧 步骤8: 正在启动Cursor...')
         const startResult = await cursorService.startCursor()
         if (startResult.success) {
           console.log('✅ Cursor启动成功')
@@ -718,12 +793,12 @@ export default {
           console.warn('⚠️ Cursor启动可能失败:', startResult.error)
         }
 
-        // 8. 等待Cursor完全启动并加载新配置
-        console.log('🔧 步骤8: 等待Cursor完全启动并加载新配置...')
+        // 9. 等待Cursor完全启动并加载新配置
+        console.log('🔧 步骤9: 等待Cursor完全启动并加载新配置...')
         await new Promise(resolve => setTimeout(resolve, 10000))
         
-        // 9. 验证账号切换结果
-        console.log('🔧 步骤9: 正在验证账号切换结果...')
+        // 10. 验证账号切换结果
+        console.log('🔧 步骤10: 正在验证账号切换结果...')
         const verifyResult = await cursorService.waitAndVerifyAccountSwitch(newAccount.email, 15000)
         
         if (verifyResult.success) {
@@ -983,18 +1058,126 @@ export default {
       }
     }
 
+    // 🔧 检查版本更新
+    const checkForUpdates = async () => {
+      try {
+        console.log('🔍 开始检查版本更新...')
+        
+        // 获取当前版本号
+        const currentVersion = versionService.getCurrentVersion()
+        console.log('📌 当前版本:', currentVersion)
+        
+        // 调用后端API检查版本
+        const result = await versionService.checkVersion(currentVersion)
+        
+        if (result.success && result.data) {
+          const { needsUpdate, latestVersion, updateInfo } = result.data
+          
+          if (needsUpdate && updateInfo) {
+            console.log('🆕 发现新版本:', latestVersion)
+            
+            // 构建更新提示内容
+            let messageHtml = `
+              <div style="text-align: left;">
+                <p style="margin-bottom: 12px; font-size: 14px;">${updateInfo.message}</p>
+                <div style="background: #f5f7fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+                  <p style="margin: 0 0 8px 0; font-weight: 600; color: #303133;">更新内容：</p>
+                  <ul style="margin: 0; padding-left: 20px; color: #606266;">
+                    ${updateInfo.features.map(feature => `<li style="margin: 4px 0;">${feature}</li>`).join('')}
+                  </ul>
+                </div>
+                ${updateInfo.downloadUrl ? 
+                  `<p style="margin: 0; font-size: 13px; color: #909399;">下载地址：<a href="${updateInfo.downloadUrl}" target="_blank" style="color: #409EFF;">${updateInfo.downloadUrl}</a></p>` 
+                  : ''}
+              </div>
+            `
+            
+            // 显示更新提示对话框
+            await ElMessageBox({
+              title: updateInfo.title || '发现新版本',
+              dangerouslyUseHTMLString: true,
+              message: messageHtml,
+              confirmButtonText: updateInfo.downloadUrl ? '立即下载' : '我知道了',
+              cancelButtonText: '稍后提醒',
+              showCancelButton: !updateInfo.forceUpdate,
+              closeOnClickModal: !updateInfo.forceUpdate,
+              closeOnPressEscape: !updateInfo.forceUpdate,
+              showClose: !updateInfo.forceUpdate,
+              type: 'info',
+              customClass: 'update-dialog',
+              center: false
+            }).then(() => {
+              // 点击"立即下载"按钮
+              if (updateInfo.downloadUrl) {
+                if (window.electronAPI && window.electronAPI.openExternal) {
+                  window.electronAPI.openExternal(updateInfo.downloadUrl)
+                } else {
+                  window.open(updateInfo.downloadUrl, '_blank')
+                }
+              }
+            }).catch(() => {
+              // 点击"稍后提醒"或关闭
+              console.log('用户选择稍后更新')
+            })
+            
+          } else {
+            console.log('✅ 当前已是最新版本')
+          }
+        } else {
+          console.warn('⚠️ 版本检查失败:', result.error)
+          // 版本检查失败时静默处理，不打扰用户
+        }
+        
+      } catch (error) {
+        console.error('❌ 检查版本更新失败:', error)
+        // 版本检查失败时静默处理，不打扰用户
+      }
+    }
+
+    // 🔧 键盘快捷键 - Ctrl+Shift+D 打开调试面板（仅调试模式）
+    const handleKeyDown = (event) => {
+      if (debugMode.value && event.ctrlKey && event.shiftKey && event.key === 'D') {
+        event.preventDefault()
+        showDebugPanel.value = !showDebugPanel.value
+      }
+    }
+
     // 🔧 初始化
     onMounted(async () => {
-      console.log('🔧 应用已启动')
+      // 获取调试模式状态
+      try {
+        if (window.electronAPI && window.electronAPI.getDebugMode) {
+          debugMode.value = await window.electronAPI.getDebugMode()
+          if (debugMode.value) {
+            console.log('🔧 调试模式已启用')
+            console.log('💡 快捷键: Ctrl+Shift+D 打开调试工具, F12 打开控制台')
+            // 添加键盘事件监听
+            window.addEventListener('keydown', handleKeyDown)
+          }
+        }
+      } catch (error) {
+        // 静默处理
+      }
+      
+      // 获取软件版本号
+      try {
+        if (window.electronAPI && window.electronAPI.getAppVersion) {
+          const version = await window.electronAPI.getAppVersion()
+          appVersion.value = version
+        }
+      } catch (error) {
+        // 静默处理版本号获取失败
+      }
       
       // 检查管理员权限
       await checkAdminRights()
       
-      // 并行加载缓存授权码、当前账号信息和系统公告
+      // 并行加载缓存授权码、当前账号信息、系统公告和版本检查
       await Promise.all([
         loadCachedLicense(), // 加载缓存的授权码并获取最新状态
         getCurrentAccount(), // 获取当前账号信息
-        getSystemNotices()   // 获取系统公告
+        getSystemNotices(),  // 获取系统公告
+        checkForUpdates()    // 检查版本更新
       ])
       
       console.log('🔧 应用初始化完成')
@@ -1027,6 +1210,9 @@ export default {
       systemNotices,
       loading,
       currentAccount,
+      appVersion,
+      debugMode,
+      showDebugPanel,
       
       // 🔧 计算属性
       licenseStatus,
@@ -1794,6 +1980,42 @@ export default {
 .main-content {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* 更新对话框样式 */
+:deep(.update-dialog) {
+  max-width: 540px;
+  border-radius: 12px;
+}
+
+:deep(.update-dialog .el-message-box__header) {
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.update-dialog .el-message-box__title) {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+:deep(.update-dialog .el-message-box__content) {
+  padding: 20px 24px;
+}
+
+:deep(.update-dialog .el-message-box__message) {
+  line-height: 1.6;
+}
+
+:deep(.update-dialog .el-message-box__btns) {
+  padding: 12px 24px 20px;
+}
+
+:deep(.update-dialog .el-button) {
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
 }
 </style>
 

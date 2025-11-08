@@ -7,6 +7,11 @@ const { promisify } = require('util')
 const execAsync = promisify(exec)
 const isDev = process.env.NODE_ENV === 'development'
 
+// 🔧 调试模式开关（从 package.json 读取）
+const packageJson = require('../package.json')
+const DEBUG_MODE = packageJson.debugMode || false
+console.log('🔧 调试模式:', DEBUG_MODE ? '开启' : '关闭')
+
 // 简化的环境检测
 const getAppEnvironment = () => {
   return isDev ? 'development' : 'production'
@@ -120,7 +125,7 @@ async function createWindow() {
         contextIsolation: true,
         enableRemoteModule: false,
         preload: preloadPath,
-        devTools: false, // 禁用开发者工具
+        devTools: DEBUG_MODE, // 根据调试模式开关控制
         webSecurity: true
       },
       show: false, // 先不显示，等准备好了再显示
@@ -172,40 +177,34 @@ async function createWindow() {
       })
     }
 
-    // 监听键盘事件打开开发者工具（用于调试）
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      console.log('按键:', input.key)
-      if (input.key === 'F12' || input.key === 'F11') {
-        event.preventDefault()
-        mainWindow.webContents.openDevTools()
-        console.log('尝试打开开发者工具')
-      }
-    })
-    
-    // 添加菜单快捷键强制打开开发者工具
-    const { Menu } = require('electron')
-    const template = [
-      {
-        label: '调试',
-        submenu: [
-          {
-            label: '打开开发者工具',
-            accelerator: 'F12',
-            click: () => {
-              mainWindow.webContents.openDevTools()
-            }
-          },
-          {
-            label: '刷新',
-            accelerator: 'F5',
-            click: () => {
-              mainWindow.reload()
-            }
+    // 调试功能（仅在调试模式下启用）
+    if (DEBUG_MODE) {
+      console.log('🔧 调试功能已启用: F12 打开开发者工具, Ctrl+Shift+D 打开调试面板')
+      
+      // F12 打开/关闭开发者工具
+      mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.key === 'F12') {
+          event.preventDefault()
+          if (mainWindow.webContents.isDevToolsOpened()) {
+            mainWindow.webContents.closeDevTools()
+          } else {
+            mainWindow.webContents.openDevTools()
           }
-        ]
+        }
+      })
+      
+      // 开发环境默认打开开发者工具
+      if (isDev) {
+        setTimeout(() => {
+          mainWindow.webContents.openDevTools()
+        }, 1000)
       }
-    ]
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+    } else {
+      // 生产模式：禁用右键菜单
+      mainWindow.webContents.on('context-menu', (event) => {
+        event.preventDefault()
+      })
+    }
     
     // 当窗口准备好显示时
     mainWindow.once('ready-to-show', () => {
@@ -417,6 +416,11 @@ ipcMain.handle('get-app-environment', () => {
   }
 })
 
+// 获取调试模式状态
+ipcMain.handle('get-debug-mode', () => {
+  return DEBUG_MODE
+})
+
 // 安全设置
 app.on('web-contents-created', (event, contents) => {
   contents.on('new-window', (navigationEvent, navigationURL) => {
@@ -547,6 +551,22 @@ ipcMain.handle('fs-read-file', async (event, filePath, encoding = 'utf8') => {
 
 ipcMain.handle('fs-write-file', async (event, filePath, data, encoding = 'utf8') => {
   try {
+    // ⚠️ 写入前检查并移除只读属性（防止 EPERM 错误）
+    try {
+      const stats = await fs.stat(filePath)
+      // Windows 下检查只读属性
+      if (process.platform === 'win32' && (stats.mode & 0o200) === 0) {
+        console.log('⚠️ 文件是只读的，尝试移除只读属性:', filePath)
+        await fs.chmod(filePath, 0o666) // 设置为可读写
+        console.log('✅ 成功移除只读属性')
+      }
+    } catch (error) {
+      // 文件不存在或无法访问，忽略
+      if (error.code !== 'ENOENT') {
+        console.warn('⚠️ 检查只读属性失败:', error.message)
+      }
+    }
+    
     await fs.writeFile(filePath, data, encoding)
     return true
   } catch (error) {
@@ -597,13 +617,18 @@ ipcMain.handle('exec-command', async (event, command) => {
     const result = await execAsync(command)
     return {
       stdout: result.stdout,
-      stderr: result.stderr
+      stderr: result.stderr,
+      error: false,
+      exitCode: 0
     }
   } catch (error) {
+    // ⚠️ execAsync 在命令返回非0退出码时会抛出错误
+    // 但这对于某些命令（如tasklist找不到进程）是正常的
     return {
-      stdout: '',
-      stderr: error.message,
-      error: true
+      stdout: error.stdout || '',
+      stderr: error.stderr || error.message,
+      error: true,
+      exitCode: error.code || 1
     }
   }
 })
@@ -945,6 +970,128 @@ ipcMain.handle('clear-log-file', async () => {
 })
 
 // 获取MAC地址
+// 强制解锁文件（Windows）
+ipcMain.handle('unlock-file', async (event, filePath) => {
+  try {
+    if (process.platform !== 'win32') {
+      return { success: false, error: 'Only supported on Windows' }
+    }
+
+    await writeLog('INFO', `尝试解锁文件: ${filePath}`)
+    
+    // 使用 handle.exe 工具或简单的重命名技巧
+    // 方法1: 尝试重命名文件（如果被锁定会失败）
+    const tempPath = filePath + '.unlocking'
+    try {
+      await fs.rename(filePath, tempPath)
+      await fs.rename(tempPath, filePath)
+      console.log('✅ 文件解锁成功（通过重命名）')
+      return { success: true, method: 'rename' }
+    } catch (error) {
+      console.log('⚠️ 重命名方法失败，文件可能仍被锁定')
+    }
+    
+    // 方法2: 尝试复制+删除（强制）
+    try {
+      const backup = filePath + '.locked.backup'
+      await fs.copyFile(filePath, backup)
+      await fs.unlink(filePath)
+      await fs.rename(backup, filePath)
+      console.log('✅ 文件解锁成功（通过复制删除）')
+      return { success: true, method: 'copy-delete' }
+    } catch (error) {
+      console.log('⚠️ 复制删除方法失败')
+      return { success: false, error: error.message }
+    }
+  } catch (error) {
+    await writeLog('ERROR', `解锁文件失败: ${filePath}`, error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Windows注册表操作（用于机器码重置）
+ipcMain.handle('update-windows-registry', async (event, keyPath, valueName, value) => {
+  try {
+    if (process.platform !== 'win32') {
+      throw new Error('Registry updates are only supported on Windows')
+    }
+
+    await writeLog('INFO', `准备更新注册表: ${keyPath}\\${valueName}`)
+    
+    // 使用reg add命令更新注册表
+    // /f 参数强制覆盖现有值,不需要确认
+    const command = `reg add "${keyPath}" /v "${valueName}" /t REG_SZ /d "${value}" /f`
+    
+    try {
+      const result = await execAsync(command)
+      await writeLog('INFO', `注册表更新成功: ${keyPath}\\${valueName}`)
+      return {
+        success: true,
+        message: `Registry key ${valueName} updated successfully`
+      }
+    } catch (error) {
+      if (error.message.includes('denied') || error.message.includes('访问被拒绝')) {
+        await writeLog('WARN', `注册表更新需要管理员权限: ${keyPath}\\${valueName}`, error)
+        return {
+          success: false,
+          error: 'Administrator rights required',
+          needsAdmin: true
+        }
+      }
+      throw error
+    }
+  } catch (error) {
+    await writeLog('ERROR', `更新注册表失败: ${keyPath}\\${valueName}`, error)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+})
+
+ipcMain.handle('read-windows-registry', async (event, keyPath, valueName) => {
+  try {
+    if (process.platform !== 'win32') {
+      throw new Error('Registry reads are only supported on Windows')
+    }
+
+    const command = `reg query "${keyPath}" /v "${valueName}"`
+    
+    try {
+      const result = await execAsync(command)
+      // 解析reg query的输出
+      const lines = result.stdout.split('\n')
+      for (const line of lines) {
+        if (line.includes(valueName)) {
+          const parts = line.trim().split(/\s+/)
+          if (parts.length >= 3) {
+            return {
+              success: true,
+              value: parts[parts.length - 1]
+            }
+          }
+        }
+      }
+      return {
+        success: false,
+        error: 'Value not found'
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        notFound: true
+      }
+    }
+  } catch (error) {
+    await writeLog('ERROR', `读取注册表失败: ${keyPath}\\${valueName}`, error)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+})
+
 ipcMain.handle('get-mac-address', async () => {
   try {
     const networkInterfaces = os.networkInterfaces()

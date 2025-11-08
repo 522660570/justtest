@@ -1,9 +1,10 @@
 {
   "name": "cursor-manager-vue",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Cursor AI账号管理工具",
   "author": "Li <522660570@qq.com>",
   "main": "electron/main.js",
+  "debugMode": false,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
