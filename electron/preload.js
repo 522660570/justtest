@@ -62,7 +62,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppEnvironment: () => ipcRenderer.invoke('get-app-environment'),
   
   // 调试模式API
-  getDebugMode: () => ipcRenderer.invoke('get-debug-mode')
+  getDebugMode: () => ipcRenderer.invoke('get-debug-mode'),
+  
+  // Cursor版本号API
+  getCursorVersion: () => ipcRenderer.invoke('get-cursor-version')
 })
 
 // 在开发模式下暴露一些调试信息

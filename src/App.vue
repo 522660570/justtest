@@ -59,7 +59,7 @@
                 <div class="purchase-info">
                   <div class="purchase-text">
                     <p class="purchase-title">🎯 没有授权码？</p>
-                    <p class="purchase-desc">点击下方按钮购买授权码，支持多种时长选择</p>
+                    <p class="purchase-desc">点击下方按钮购买授权码</p>
                   </div>
                 </div>
                 <div class="purchase-actions">
@@ -116,9 +116,10 @@
           <div class="right-panel">
             <!-- 当前账号情况 -->
             <div class="account-status-section">
-              <div class="status-row">
-                  <div class="status-item">
-                    <span class="status-label">当前授权状态：</span>
+              <div class="status-grid">
+                <div class="status-item-grid">
+                  <span class="status-label-grid">当前授权状态</span>
+                  <div class="status-value-wrapper">
                     <el-tag 
                       :type="licenseStatus.statusColor" 
                       size="default"
@@ -136,19 +137,25 @@
                       🔄
                     </el-button>
                   </div>
-                <div class="status-item">
-                  <span class="status-label">软件版本：</span>
+                </div>
+
+                <div class="status-item-grid">
+                  <span class="status-label-grid">软件版本</span>
                   <span class="status-value">v{{ cursorVersion }}</span>
                 </div>
-              </div>
 
-              <div class="status-row">
-                <div class="status-item">
-                  <span class="status-label">会员类型：</span>
+                <div class="status-item-grid">
+                  <span class="status-label-grid">Cursor版本</span>
+                  <span class="status-value cursor-version">{{ cursorEditorVersion }}</span>
+                </div>
+
+                <div class="status-item-grid">
+                  <span class="status-label-grid">会员类型</span>
                   <span class="status-value" :class="membershipClass">{{ membershipType }}</span>
                 </div>
-                <div class="status-item">
-                  <span class="status-label">到期时间：</span>
+
+                <div class="status-item-grid">
+                  <span class="status-label-grid">到期时间</span>
                   <span class="status-value" :class="expiryClass">{{ expiryTime }}</span>
                 </div>
               </div>
@@ -346,6 +353,9 @@ export default {
 
     // 获取软件版本号
     const appVersion = ref('1.1.0')
+    
+    // 获取 Cursor 版本号
+    const cursorEditorVersion = ref('未知')
     
     const cursorVersion = computed(() => {
       return appVersion.value
@@ -1169,6 +1179,23 @@ export default {
         // 静默处理版本号获取失败
       }
       
+      // 获取 Cursor 版本号
+      try {
+        if (window.electronAPI && window.electronAPI.getCursorVersion) {
+          const result = await window.electronAPI.getCursorVersion()
+          if (result.success) {
+            cursorEditorVersion.value = result.version
+            console.log('✅ 获取 Cursor 版本成功:', result.version)
+          } else {
+            cursorEditorVersion.value = '未知'
+            console.warn('⚠️ 获取 Cursor 版本失败:', result.error)
+          }
+        }
+      } catch (error) {
+        console.error('❌ 获取 Cursor 版本号出错:', error)
+        cursorEditorVersion.value = '未知'
+      }
+      
       // 检查管理员权限
       await checkAdminRights()
       
@@ -1211,6 +1238,7 @@ export default {
       loading,
       currentAccount,
       appVersion,
+      cursorEditorVersion,
       debugMode,
       showDebugPanel,
       
@@ -1549,11 +1577,75 @@ export default {
 /* 账号状态显示 */
 .account-status-section {
   background: rgba(255, 255, 255, 0.95);
-  padding: 20px;
+  padding: 24px;
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
+/* 新的网格布局 */
+.status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.status-item-grid {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 32px;
+}
+
+.status-label-grid {
+  font-size: 14px;
+  color: #8c8c8c;
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 8px;
+  position: relative;
+}
+
+.status-label-grid::after {
+  content: '：';
+  position: absolute;
+  right: 0;
+}
+
+.status-value-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.status-value.cursor-version {
+  color: #1890ff;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.status-value.text-success {
+  color: #52c41a;
+}
+
+.status-value.text-warning {
+  color: #faad14;
+}
+
+.status-value.text-danger {
+  color: #ff4d4f;
+}
+
+.status-tag {
+  font-weight: 500;
+}
+
+/* 旧的样式保持兼容 */
 .status-row {
   display: flex;
   justify-content: space-between;
@@ -1574,27 +1666,6 @@ export default {
   font-size: 14px;
   color: #8c8c8c;
   white-space: nowrap;
-}
-
-.status-value {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.status-value.text-success {
-  color: #52c41a;
-}
-
-.status-value.text-warning {
-  color: #faad14;
-}
-
-.status-value.text-danger {
-  color: #ff4d4f;
-}
-
-.status-tag {
-  font-weight: 500;
 }
 
 /* 当前账号信息样式 */

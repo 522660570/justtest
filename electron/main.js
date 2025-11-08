@@ -969,6 +969,96 @@ ipcMain.handle('clear-log-file', async () => {
   }
 })
 
+// 获取 Cursor 版本号
+ipcMain.handle('get-cursor-version', async () => {
+  try {
+    console.log('🔍 正在获取 Cursor 版本号...')
+    
+    // 方法1: 通过命令行获取版本号
+    try {
+      const result = await execAsync('cursor --version', { timeout: 5000 })
+      const versionLine = result.stdout.trim().split('\n')[0]
+      if (versionLine) {
+        // 提取版本号 (例如: "0.41.3" 从 "Cursor 0.41.3")
+        const versionMatch = versionLine.match(/(\d+\.\d+\.\d+)/)
+        if (versionMatch) {
+          const version = versionMatch[1]
+          console.log('✅ 通过命令行获取 Cursor 版本:', version)
+          return { success: true, version, method: 'command' }
+        }
+      }
+    } catch (cmdError) {
+      console.log('⚠️ 命令行方式失败:', cmdError.message)
+    }
+    
+    // 方法2: 通过可执行文件路径查找 package.json
+    try {
+      // 先找到 Cursor 可执行文件（通过正在运行的进程）
+      let cursorPath = null
+      try {
+        const processResult = await execAsync('powershell "Get-Process -Name Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 | Select-Object -ExpandProperty Path"', { timeout: 5000 })
+        cursorPath = processResult.stdout.trim()
+      } catch (e) {
+        console.log('⚠️ 无法通过进程查找 Cursor 路径')
+      }
+      
+      if (cursorPath && cursorPath !== '') {
+        const cursorDir = path.dirname(cursorPath)
+        
+        // 尝试多个可能的 package.json 路径
+        const possiblePackagePaths = [
+          path.join(cursorDir, 'resources', 'app', 'package.json'),
+          path.join(cursorDir, 'resources', 'package.json'),
+          path.join(cursorDir, 'package.json'),
+          path.join(cursorDir, '..', 'resources', 'app', 'package.json')
+        ]
+        
+        for (const packagePath of possiblePackagePaths) {
+          try {
+            const packageData = await fs.readFile(packagePath, 'utf8')
+            const packageJson = JSON.parse(packageData)
+            if (packageJson.version) {
+              console.log('✅ 通过 package.json 获取 Cursor 版本:', packageJson.version)
+              return { success: true, version: packageJson.version, method: 'package.json' }
+            }
+          } catch (err) {
+            // 继续尝试下一个路径
+          }
+        }
+      }
+    } catch (fileError) {
+      console.log('⚠️ 文件方式失败:', fileError.message)
+    }
+    
+    // 方法3: 通过注册表获取版本信息 (Windows)
+    if (process.platform === 'win32') {
+      try {
+        const regResult = await execAsync('reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"', { timeout: 5000 })
+        const lines = regResult.stdout.split('\n')
+        for (const line of lines) {
+          if (line.includes('DisplayVersion')) {
+            const match = line.match(/REG_SZ\s+(.+)/)
+            if (match) {
+              const version = match[1].trim()
+              console.log('✅ 通过注册表获取 Cursor 版本:', version)
+              return { success: true, version, method: 'registry' }
+            }
+          }
+        }
+      } catch (regError) {
+        console.log('⚠️ 注册表方式失败:', regError.message)
+      }
+    }
+    
+    console.log('⚠️ 无法获取 Cursor 版本号')
+    return { success: false, error: '未能获取版本信息', version: '未知' }
+    
+  } catch (error) {
+    console.error('❌ 获取 Cursor 版本号失败:', error)
+    return { success: false, error: error.message, version: '未知' }
+  }
+})
+
 // 获取MAC地址
 // 强制解锁文件（Windows）
 ipcMain.handle('unlock-file', async (event, filePath) => {
