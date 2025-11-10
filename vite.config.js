@@ -1,11 +1,18 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
+
+// 从 package.json 读取版本号
+const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
 export default defineConfig({
   plugins: [vue()],
   base: './',
   publicDir: 'public',
+  define: {
+    '__APP_VERSION__': JSON.stringify(packageJson.version)
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

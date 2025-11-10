@@ -82,8 +82,8 @@
               <div class="card-header">
                 <div class="step-number">2</div>
                 <div class="card-title">
-                  <h3>刷新CURSSOR</h3>
-                  <p>点击一键续杯可切换新账号，恶意点击直接封禁！</p>
+                  <h3>刷新 Cursor</h3>
+                  <p>点击一键续杯可切换新账号</p>
                 </div>
               </div>
             </el-card>
@@ -351,8 +351,8 @@ export default {
       return result
     })
 
-    // 获取软件版本号
-    const appVersion = ref('1.1.0')
+    // 获取软件版本号（自动从 package.json 读取）
+    const appVersion = ref(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.0')
     
     // 获取 Cursor 版本号
     const cursorEditorVersion = ref('未知')

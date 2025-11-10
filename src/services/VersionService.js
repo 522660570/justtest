@@ -89,9 +89,8 @@ class VersionService {
    * @returns {string}
    */
   getCurrentVersion() {
-    // 当前前端版本号
-    // 每次发布新版本时，手动修改这里的版本号
-    return '1.1'  // 👈 在这里修改前端版本号
+    // 自动从 package.json 读取版本号（通过 vite.config.js 注入）
+    return typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.0'
   }
 }
 
