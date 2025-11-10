@@ -1,6 +1,6 @@
 {
   "name": "cursor-manager-vue",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Cursor AI账号管理工具",
   "author": "Li <522660570@qq.com>",
   "main": "electron/main.js",
@@ -13,35 +13,29 @@
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron-build": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never",
-    
     "build-exe": "npm run build && electron-builder --win portable --x64",
     "build-installer": "npm run build && electron-builder --win nsis --x64",
-    
     "build:win-x64": "npm run build && electron-builder --win --x64",
     "build:win-ia32": "npm run build && electron-builder --win --ia32",
     "build:win-arm64": "npm run build && electron-builder --win --arm64",
     "build:win-all": "npm run build && electron-builder --win --x64 --ia32 --arm64",
-    
     "build:mac-x64": "npm run build && electron-builder --mac --x64",
     "build:mac-arm64": "npm run build && electron-builder --mac --arm64",
     "build:mac-universal": "npm run build && electron-builder --mac universal",
     "build:mac-all": "npm run build && electron-builder --mac --x64 --arm64 universal",
-    
     "build:linux-x64": "npm run build && electron-builder --linux --x64",
     "build:linux-arm64": "npm run build && electron-builder --linux --arm64",
     "build:linux-armv7l": "npm run build && electron-builder --linux --armv7l",
     "build:linux-all": "npm run build && electron-builder --linux --x64 --arm64 --armv7l",
-    
     "build:all-platforms": "npm run build && electron-builder -mwl",
     "build:all-full": "npm run build && electron-builder -mwl --x64 --arm64",
-    
     "check-icons": "node scripts/convert-icons.js"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.0",
     "axios": "^1.6.0",
     "element-plus": "^2.4.0",
-    "sqlite3": "^5.1.7",
+    "sql.js": "^1.13.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {
@@ -99,24 +93,30 @@
     "npmRebuild": false,
     "asar": true,
     "asarUnpack": [
-      "node_modules/sqlite3/**/*"
+      "node_modules/sql.js/**/*"
     ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
         {
           "target": "portable",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
-      "requestedExecutionLevel": "requireAdministrator",
+      "requestedExecutionLevel": "asInvoker",
       "artifactName": "${productName}_${arch}.${ext}",
       "verifyUpdateCodeSignature": false,
+      "legalTrademarks": "Cursor Manager",
       "extraResources": [
         {
           "from": "resources/",
           "to": "resources/",
-          "filter": ["**/*"]
+          "filter": [
+            "**/*"
+          ]
         }
       ],
       "sign": null,
@@ -127,20 +127,36 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64",
+            "universal"
+          ]
         }
       ],
       "category": "public.app-category.developer-tools",
       "artifactName": "${productName}_mac_${arch}.${ext}",
-      "hardenedRuntime": true,
+      "electronLanguages": [
+        "en",
+        "zh_CN"
+      ],
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
+      "identity": null,
+      "sign": null,
+      "notarize": false,
       "entitlements": null,
       "entitlementsInherit": null,
+      "extendInfo": {
+        "LSUIElement": false
+      },
       "extraResources": [
         {
           "from": "resources/",
           "to": "resources/",
-          "filter": ["**/*"]
+          "filter": [
+            "**/*"
+          ]
         }
       ]
     },
@@ -149,7 +165,10 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "category": "Development",
@@ -185,6 +204,9 @@
         "height": 380
       }
     },
-    "electronLanguages": ["zh-CN", "en-US"]
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ]
   }
 }

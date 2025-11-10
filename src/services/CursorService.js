@@ -633,14 +633,14 @@ class CursorService {
       if (successCount >= 3) {
         // 只要成功3个或以上步骤就算成功
         console.log('✅ 机器ID重置成功！（至少3个关键步骤已完成）')
-        console.log('📊 新的机器ID:')
-        Object.entries(newIds).forEach(([key, value]) => {
-          console.log(`  - ${key}: ${value.substring(0, 20)}...`)
-        })
-        
-        return {
-          success: true,
-          newIds: newIds,
+      console.log('📊 新的机器ID:')
+      Object.entries(newIds).forEach(([key, value]) => {
+        console.log(`  - ${key}: ${value.substring(0, 20)}...`)
+      })
+
+      return {
+        success: true,
+        newIds: newIds,
           message: 'Machine ID reset successfully',
           summary,
           warnings: !summary.storageJson ? ['storage.json update failed but skipped'] : []
@@ -667,19 +667,19 @@ class CursorService {
    * 生成UUID的辅助函数
    */
   generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0
-      const v = c === 'x' ? r : (r & 0x3 | 0x8)
-      return v.toString(16)
-    })
-  }
-
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0
+        const v = c === 'x' ? r : (r & 0x3 | 0x8)
+        return v.toString(16)
+      })
+    }
+    
   /**
-   * 生成所有机器ID（参考 cursor-free-vip-main）
-   * 只生成5个字段，system.machineGuid在注册表更新时现场生成
+   * 生成所有机器ID
+   * 参考三个开源项目的最佳实践
    */
   generateAllMachineIds() {
-    // 生成 SHA256 哈希（64字符）
+    // 生成 SHA256 哈希（64字符）- 用于 machineId
     const generateHash256 = () => {
       const chars = '0123456789abcdef'
       let result = ''
@@ -689,7 +689,7 @@ class CursorService {
       return result
     }
     
-    // 生成 SHA512 哈希（128字符）
+    // 生成 SHA512 哈希（128字符）- 用于 macMachineId  
     const generateHash512 = () => {
       const chars = '0123456789abcdef'
       let result = ''
@@ -704,14 +704,14 @@ class CursorService {
     const macMachineId = generateHash512()
     const sqmId = `{${this.generateUUID().toUpperCase()}}`
     
-    // ⚠️ 参考cursor-free-vip-main: 只生成5个字段
-    // system.machineGuid在update_system_ids时现场生成
+    // ⚠️ 关键：参考 CursorPool 和 cursor-free-vip
+    // storage.serviceMachineId 必须等于 devDeviceId
     return {
       'telemetry.devDeviceId': devDeviceId,
       'telemetry.machineId': machineId,
       'telemetry.macMachineId': macMachineId,
       'telemetry.sqmId': sqmId,
-      'storage.serviceMachineId': devDeviceId
+      'storage.serviceMachineId': devDeviceId  // 必须！值与 devDeviceId 相同
     }
   }
 
@@ -726,7 +726,9 @@ class CursorService {
   }
 
   /**
-   * 更新 storage.json（关键步骤！）
+   * 更新 storage.json
+   * 参考 CursorPool: storage.json 只写4个字段（不写storage.serviceMachineId）
+   * storage.serviceMachineId 只写入 SQLite
    */
   async updateStorageJson(newIds) {
     try {
@@ -741,16 +743,20 @@ class CursorService {
         console.log('✅ 成功读取 storage.json，现有字段数:', Object.keys(config).length)
       } catch (error) {
         console.warn('⚠️ storage.json 不存在或读取失败，将创建新文件:', error.message)
-        // 如果是 JSON 解析错误，尝试修复
-        if (error.message.includes('JSON') || error.message.includes('token')) {
-          console.warn('⚠️ 检测到 JSON 格式错误，可能是 BOM 或格式问题，将创建新文件')
-          config = {}
-        }
+        config = {}
       }
       
-      // 更新配置（参考 cursor-free-vip-main: config.update(new_ids)）
-      // 所有newIds都直接写入storage.json
-      Object.assign(config, newIds)
+      // ⚠️ 参考 CursorPool: storage.json 只写4个字段
+      // storage.serviceMachineId 不写入 storage.json（只写入 SQLite）
+      const storageFields = {
+        'telemetry.devDeviceId': newIds['telemetry.devDeviceId'],
+        'telemetry.machineId': newIds['telemetry.machineId'],
+        'telemetry.macMachineId': newIds['telemetry.macMachineId'],
+        'telemetry.sqmId': newIds['telemetry.sqmId']
+      }
+      
+      // 更新配置
+      Object.assign(config, storageFields)
       
       // 写回文件（确保 UTF-8 without BOM）
       const jsonString = JSON.stringify(config, null, 4)
@@ -758,38 +764,24 @@ class CursorService {
       // 尝试写入，如果失败尝试解锁
       try {
         await api.fsWriteFile(this.cursorPaths.storage, jsonString, 'utf8')
-        console.log('✅ storage.json 更新成功，已写入', Object.keys(newIds).length, '个字段')
+        console.log('✅ storage.json 更新成功，已写入 4 个字段（参考 CursorPool）')
       } catch (writeError) {
         if (writeError.message.includes('EPERM') && this.platform === 'win32') {
           console.warn('⚠️ 文件被锁定，尝试解锁...')
-          // 尝试解锁文件
           const unlockResult = await window.electronAPI.unlockFile(this.cursorPaths.storage)
           if (unlockResult.success) {
             console.log('✅ 文件解锁成功，重试写入...')
             await api.fsWriteFile(this.cursorPaths.storage, jsonString, 'utf8')
             console.log('✅ storage.json 重试写入成功')
           } else {
-            throw writeError // 解锁失败，抛出原错误
+            throw writeError
           }
         } else {
           throw writeError
         }
       }
       
-      console.log('📊 新写入的字段:', Object.keys(newIds).join(', '))
-      
-      // 验证写入（读取回来检查）
-      try {
-        const verifyContent = await api.fsReadFile(this.cursorPaths.storage, 'utf8')
-        const verifyData = JSON.parse(this.removeBOM(verifyContent))
-        console.log('🔍 验证写入结果:')
-        Object.keys(newIds).forEach(key => {
-          const exists = verifyData[key] === newIds[key]
-          console.log(`  ${exists ? '✅' : '❌'} ${key}:`, exists ? '已写入' : '未找到')
-        })
-      } catch (error) {
-        console.warn('⚠️ 验证写入失败:', error.message)
-      }
+      console.log('📊 写入的字段:', Object.keys(storageFields).join(', '))
       
       return { success: true }
     } catch (error) {
@@ -904,19 +896,31 @@ class CursorService {
 
   /**
    * 更新 SQLite 中的 telemetry 字段
+   * 参考 CursorPool + cursor-free-vip: SQLite 必须写5个字段
    */
   async updateSqliteMachineIds(newIds) {
     try {
       console.log('🗄️ 更新 SQLite 中的 telemetry 字段...', this.cursorPaths.sqlite)
       
-      // 参考cursor-free-vip-main: 所有newIds都写入SQLite
+      // ⚠️ 参考 CursorPool: SQLite 必须写入所有5个字段
+      // 包括 storage.serviceMachineId（等于 devDeviceId）
+      const sqliteFields = {
+        'telemetry.devDeviceId': newIds['telemetry.devDeviceId'],
+        'telemetry.machineId': newIds['telemetry.machineId'],
+        'telemetry.macMachineId': newIds['telemetry.macMachineId'],
+        'telemetry.sqmId': newIds['telemetry.sqmId'],
+        'storage.serviceMachineId': newIds['telemetry.devDeviceId']  // 关键！必须等于 devDeviceId
+      }
+      
       let updateCount = 0
-      for (const [key, value] of Object.entries(newIds)) {
+      for (const [key, value] of Object.entries(sqliteFields)) {
         const sql = "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)"
         await api.sqliteQuery(this.cursorPaths.sqlite, sql, [key, value])
         console.log(`✅ 更新 ${key}: ${value.substring(0, 30)}...`)
         updateCount++
       }
+      
+      console.log(`✅ SQLite 字段更新成功，共更新 ${updateCount} 个字段`)
       
       // ⚠️ 执行 VACUUM 优化数据库（参考 Cursor_Windsurf_Reset）
       console.log('🔧 优化数据库 (VACUUM)...')
@@ -927,10 +931,9 @@ class CursorService {
         console.warn('⚠️ VACUUM 执行失败（不影响功能）:', error.message)
       }
       
-      console.log(`✅ SQLite telemetry 字段更新成功，共更新 ${updateCount} 个字段`)
       return { success: true, updateCount }
     } catch (error) {
-      console.error('❌ SQLite telemetry 更新失败:', error)
+      console.error('❌ SQLite 更新失败:', error)
       return { success: false, error: error.message }
     }
   }

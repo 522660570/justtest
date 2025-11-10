@@ -752,26 +752,14 @@ export default {
           console.warn('⚠️ Cursor进程关闭可能不完整:', killResult.error)
         }
         
-        // 🔑 关键修复：等待文件锁释放（解决 EPERM 错误）
-        console.log('⏳ 等待文件锁释放（5秒）...')
-        await new Promise(resolve => setTimeout(resolve, 5000))
-        console.log('✅ 等待完成，文件应该可以修改了')
-
-        // 4. 重置机器ID
+        // 4. 重置机器ID（参考开源项目：无需等待，直接重置）
         console.log('🔧 步骤4: 正在重置机器ID...')
         const resetResult = await cursorService.resetMachineId()
         if (!resetResult.success) {
-          console.warn('⚠️ 机器ID重置失败:', resetResult.error)
-          // 🔑 如果失败，再等待并重试一次
-          console.log('⏳ 再等待5秒后重试...')
-          await new Promise(resolve => setTimeout(resolve, 5000))
-          const retryResetResult = await cursorService.resetMachineId()
-          if (!retryResetResult.success) {
-            console.error('❌ 机器ID重置重试仍然失败')
-          } else {
-            console.log('✅ 机器ID重置重试成功')
-          }
+          console.error('❌ 机器ID重置失败:', resetResult.error)
+          throw new Error('机器ID重置失败: ' + resetResult.error)
         }
+        console.log('✅ 机器ID重置成功')
 
         // 5. 应用新账号
         console.log('🔧 步骤5: 正在应用新账号:', newAccount.email)
@@ -781,35 +769,22 @@ export default {
         }
         console.log('✅ 账号存储更新成功')
 
-        // 6. 深度清理缓存
-        console.log('🔧 步骤6: 正在深度清理缓存...')
-        const cacheResult = await cursorService.cleanCursorCache()
-        if (cacheResult.success) {
-          console.log(`✅ 缓存清理完成: ${cacheResult.cleanedPaths}/${cacheResult.totalPaths} 个路径`)
-        } else {
-          console.warn('⚠️ 缓存清理部分失败:', cacheResult.error)
-        }
-
-        // 7. 等待缓存清理完成后再启动
-        console.log('🔧 步骤7: 等待缓存清理完全生效...')
-        await new Promise(resolve => setTimeout(resolve, 5000))
-
-        // 8. 启动Cursor
-        console.log('🔧 步骤8: 正在启动Cursor...')
+        // 6. 启动Cursor（参考开源项目：立即启动，无需等待）
+        console.log('🔧 步骤6: 正在启动Cursor...')
         const startResult = await cursorService.startCursor()
         if (startResult.success) {
-          console.log('✅ Cursor启动成功')
+          console.log('✅ Cursor启动命令已执行')
         } else {
           console.warn('⚠️ Cursor启动可能失败:', startResult.error)
         }
-
-        // 9. 等待Cursor完全启动并加载新配置
-        console.log('🔧 步骤9: 等待Cursor完全启动并加载新配置...')
-        await new Promise(resolve => setTimeout(resolve, 10000))
         
-        // 10. 验证账号切换结果
-        console.log('🔧 步骤10: 正在验证账号切换结果...')
-        const verifyResult = await cursorService.waitAndVerifyAccountSwitch(newAccount.email, 15000)
+        // 7. 简短等待让Cursor加载配置（参考开源项目：2-3秒足够）
+        console.log('⏳ 等待Cursor加载新配置...')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        // 8. 验证账号切换结果（缩短超时时间）
+        console.log('🔧 步骤7: 正在验证账号切换结果...')
+        const verifyResult = await cursorService.waitAndVerifyAccountSwitch(newAccount.email, 8000)
         
         if (verifyResult.success) {
           ElMessage.success(`✅ 账号切换成功！当前账号: ${verifyResult.account.email}`)

@@ -12,6 +12,37 @@ const packageJson = require('../package.json')
 const DEBUG_MODE = packageJson.debugMode || false
 console.log('🔧 调试模式:', DEBUG_MODE ? '开启' : '关闭')
 
+// ⚠️ 防止多实例运行（Windows 重要）
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  console.log('⚠️ 应用已在运行，退出本次启动')
+  app.quit()
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // 有人尝试运行第二个实例，聚焦到我们的窗口
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
+// ⚠️ 禁用硬件加速（解决某些 Windows 启动崩溃）
+if (process.platform === 'win32') {
+  app.disableHardwareAcceleration()
+  console.log('⚠️ Windows: 已禁用硬件加速（提高兼容性）')
+}
+
+// ⚠️ 设置更宽松的命令行开关（减少崩溃）
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+app.commandLine.appendSwitch('no-sandbox')
+app.commandLine.appendSwitch('disable-software-rasterizer')
+
+// ⚠️ Windows 7/8 兼容性
+if (process.platform === 'win32' && process.windowsStore) {
+  app.setAppUserModelId('com.cursor.manager')
+}
+
 // 简化的环境检测
 const getAppEnvironment = () => {
   return isDev ? 'development' : 'production'
@@ -103,18 +134,30 @@ let mainWindow
 
 async function createWindow() {
   try {
-    // 生产模式下跳过所有检查，直接创建窗口
+    console.log('🚀 开始创建窗口...')
+    console.log('📂 当前目录:', __dirname)
+    console.log('📦 是否打包:', app.isPackaged)
+    console.log('🖥️ 平台:', process.platform, process.arch)
+    
     const preloadPath = path.join(__dirname, 'preload.js')
     
-    // 检查管理员权限（简化版，减少启动时间）
-    const hasAdminRights = await checkAdminRights()
-    if (hasAdminRights) {
-      console.log('✅ 已获得管理员权限')
-    } else {
-      console.warn('⚠️ 未获得管理员权限')
+    // 检查 preload 文件是否存在
+    try {
+      await fs.access(preloadPath)
+      console.log('✅ preload.js 文件存在:', preloadPath)
+    } catch (error) {
+      console.error('❌ preload.js 文件不存在:', preloadPath)
+      // 尝试其他可能的路径
+      const altPath = path.join(process.resourcesPath, 'app', 'electron', 'preload.js')
+      try {
+        await fs.access(altPath)
+        console.log('✅ 在备用路径找到 preload.js:', altPath)
+      } catch (err) {
+        throw new Error(`无法找到 preload.js 文件: ${preloadPath}`)
+      }
     }
     
-    // 创建浏览器窗口
+    // 创建浏览器窗口（简化配置，提高兼容性）
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 700,
@@ -125,13 +168,16 @@ async function createWindow() {
         contextIsolation: true,
         enableRemoteModule: false,
         preload: preloadPath,
-        devTools: DEBUG_MODE, // 根据调试模式开关控制
-        webSecurity: true
+        devTools: DEBUG_MODE,
+        webSecurity: true,
+        sandbox: false, // 禁用沙箱（提高兼容性）
+        enableWebSQL: false,
+        spellcheck: false // 禁用拼写检查（加快启动）
       },
-      show: false, // 先不显示，等准备好了再显示
-      titleBarStyle: 'hidden', // 隐藏标题栏
-      frame: false, // 无边框窗口
-      center: true, // 居中显示
+      show: false,
+      titleBarStyle: 'hidden',
+      frame: false,
+      center: true,
       resizable: true,
       minimizable: true,
       maximizable: true,
@@ -139,42 +185,83 @@ async function createWindow() {
       focusable: true,
       alwaysOnTop: false,
       fullscreenable: true,
-      skipTaskbar: false, // 确保在任务栏显示
+      skipTaskbar: false,
       title: 'Cursor Manager',
-      autoHideMenuBar: true, // 自动隐藏菜单栏
-      thickFrame: false, // 去除窗口边框
-      transparent: false, // 确保不透明
-      backgroundColor: '#667eea', // 设置背景色与渐变一致
-      vibrancy: 'none', // 禁用毛玻璃效果
-      visualEffectState: 'active' // 确保视觉效果正常
+      autoHideMenuBar: true,
+      thickFrame: false,
+      transparent: false,
+      backgroundColor: '#667eea',
+      // 移除可能导致问题的选项
+      // vibrancy: 'none',
+      // visualEffectState: 'active'
     })
+    
+    console.log('✅ BrowserWindow 创建成功')
 
-    // 加载应用
-    if (isDev && process.env.NODE_ENV === 'development') {
-      mainWindow.loadURL('http://localhost:5173')
-      // 开发模式下打开开发者工具
-      mainWindow.webContents.openDevTools()
-    } else {
-      // 生产模式：根据打包后的实际路径加载
-      let indexPath
-      if (app.isPackaged) {
-        // 打包后的路径
-        indexPath = path.join(process.resourcesPath, 'app.asar', 'dist', 'index.html')
+    // 加载应用（增强错误处理）
+    try {
+      if (isDev && process.env.NODE_ENV === 'development') {
+        console.log('🔧 开发模式：加载 localhost:5173')
+        await mainWindow.loadURL('http://localhost:5173')
+        if (DEBUG_MODE) {
+          mainWindow.webContents.openDevTools()
+        }
       } else {
-        // 本地构建测试路径
-        indexPath = path.join(__dirname, '../dist/index.html')
+        // 生产模式：智能路径查找
+        let indexPath
+        const possiblePaths = []
+        
+        if (app.isPackaged) {
+          // 打包后可能的路径
+          possiblePaths.push(
+            path.join(process.resourcesPath, 'app.asar', 'dist', 'index.html'),
+            path.join(process.resourcesPath, 'app', 'dist', 'index.html'),
+            path.join(__dirname, 'dist', 'index.html'),
+            path.join(__dirname, '..', 'dist', 'index.html')
+          )
+        } else {
+          // 本地构建路径
+          possiblePaths.push(
+            path.join(__dirname, '..', 'dist', 'index.html'),
+            path.join(__dirname, 'dist', 'index.html')
+          )
+        }
+        
+        // 尝试找到存在的路径
+        for (const testPath of possiblePaths) {
+          try {
+            await fs.access(testPath)
+            indexPath = testPath
+            console.log('✅ 找到页面文件:', indexPath)
+            break
+          } catch (err) {
+            console.log('⏭️ 路径不存在，尝试下一个:', testPath)
+          }
+        }
+        
+        if (!indexPath) {
+          throw new Error('无法找到 index.html 文件。尝试的路径:\n' + possiblePaths.join('\n'))
+        }
+        
+        console.log('🔍 加载页面:', indexPath)
+        await mainWindow.loadFile(indexPath)
+        console.log('✅ 页面加载成功')
       }
-      
-      console.log('🔍 尝试加载页面:', indexPath)
-      console.log('📦 是否已打包:', app.isPackaged)
-      console.log('📂 resourcesPath:', process.resourcesPath)
-      console.log('📂 __dirname:', __dirname)
-      
-      mainWindow.loadFile(indexPath).catch(err => {
-        console.error('❌ 加载页面失败:', err)
-        // 如果加载失败，显示错误信息
-        mainWindow.loadURL(`data:text/html,<h1 style="color:white;background:#333;padding:20px;">页面加载失败<br>错误: ${err.message}<br>路径: ${indexPath}</h1>`)
-      })
+    } catch (loadError) {
+      console.error('❌ 页面加载失败:', loadError)
+      // 显示友好的错误页面
+      mainWindow.loadURL(`data:text/html,
+        <html>
+          <head><title>加载失败</title></head>
+          <body style="background:#667eea;color:white;font-family:sans-serif;padding:40px;text-align:center;">
+            <h1>⚠️ 页面加载失败</h1>
+            <p style="font-size:16px;margin:20px 0;">错误: ${loadError.message}</p>
+            <p style="font-size:14px;opacity:0.8;">请尝试重新安装应用程序</p>
+            <button onclick="require('electron').remote.app.quit()" style="padding:10px 20px;font-size:16px;margin-top:20px;">退出</button>
+          </body>
+        </html>
+      `)
+      throw loadError
     }
 
     // 调试功能（仅在调试模式下启用）
@@ -206,12 +293,26 @@ async function createWindow() {
       })
     }
     
-    // 当窗口准备好显示时
+    // 当窗口准备好显示时（添加超时保护）
+    let shown = false
     mainWindow.once('ready-to-show', () => {
-      // 立即显示窗口，不等待任何异步操作
-      mainWindow.show()
-      mainWindow.focus()
+      if (!shown) {
+        shown = true
+        mainWindow.show()
+        mainWindow.focus()
+        console.log('✅ 窗口已显示')
+      }
     })
+    
+    // 超时保护：5秒后强制显示窗口（防止卡住）
+    setTimeout(() => {
+      if (!shown && mainWindow) {
+        shown = true
+        console.warn('⚠️ 超时强制显示窗口')
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    }, 5000)
     
     // 监听加载失败事件（简化版）
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
@@ -282,23 +383,58 @@ async function createWindow() {
 }
 
 // 当Electron完成初始化并准备创建浏览器窗口时调用此方法
-app.whenReady().then(async () => {
-  // 简化启动逻辑，减少日志写入
-  console.log('🚀 应用程序启动中...')
+// ⚠️ 捕获启动错误
+process.on('uncaughtException', (error) => {
+  console.error('❌ 未捕获的异常:', error)
   
-  // 立即创建窗口，不等待任何检查
-  createWindow()
+  if (error.message.includes('Failed to load')) {
+    dialog.showErrorBox('启动失败', 
+      '应用启动失败。\n\n' +
+      '可能的解决方法：\n' +
+      '1. 以管理员身份运行\n' +
+      '2. 安装 VC++ 运行库\n' +
+      '3. 重新下载安装\n\n' +
+      `错误详情: ${error.message}`
+    )
+  }
+  
+  // 延迟退出，确保对话框显示
+  setTimeout(() => app.quit(), 3000)
+})
 
-  app.on('activate', () => {
-    // 在macOS上，当点击dock图标并且没有其他窗口打开时，
-    // 通常在应用程序中重新创建一个窗口
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
-  })
-}).catch((error) => {
-  console.error('Electron启动失败:', error)
-  app.quit()
+app.whenReady().then(async () => {
+  try {
+    console.log('🚀 Electron 已就绪')
+    console.log('📦 应用版本:', app.getVersion())
+    console.log('📂 应用路径:', app.getAppPath())
+    console.log('📂 用户数据:', app.getPath('userData'))
+    
+    // 立即创建窗口
+    await createWindow()
+    console.log('✅ 窗口创建成功')
+
+    app.on('activate', () => {
+      // macOS：点击 dock 图标时重新创建窗口
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      }
+    })
+  } catch (error) {
+    console.error('❌ 启动失败:', error)
+    
+    // 显示详细错误信息
+    dialog.showErrorBox('应用启动失败', 
+      `启动过程中发生错误：\n\n${error.message}\n\n` +
+      `请尝试：\n` +
+      `1. 右键点击应用 → 以管理员身份运行\n` +
+      `2. 重新安装应用程序\n` +
+      `3. 检查杀毒软件是否拦截\n` +
+      `4. 安装 Visual C++ 运行库\n\n` +
+      `如果问题持续，请联系技术支持。`
+    )
+    
+    app.quit()
+  }
 })
 
 // 当所有窗口都被关闭时退出应用
@@ -576,34 +712,56 @@ ipcMain.handle('fs-write-file', async (event, filePath, data, encoding = 'utf8')
 
 ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
   try {
-    // 动态导入sqlite3
-    const sqlite3 = require('sqlite3').verbose()
-    const db = new sqlite3.Database(dbPath)
+    // 使用 sql.js（纯 JavaScript 实现，无需编译，跨平台零问题）
+    const initSqlJs = require('sql.js')
+    const SQL = await initSqlJs()
     
-    const result = await new Promise((resolve, reject) => {
-      if (query.toLowerCase().startsWith('select')) {
-        db.all(query, params, (err, rows) => {
-          if (err) reject(err)
-          else resolve(rows)
-        })
+    // 读取数据库文件
+    const buffer = await fs.readFile(dbPath)
+    const db = new SQL.Database(buffer)
+    
+    let result
+    
+    try {
+      if (query.toLowerCase().trim().startsWith('select')) {
+        // SELECT 查询
+        const stmt = db.prepare(query)
+        stmt.bind(params)
+        
+        const rows = []
+        while (stmt.step()) {
+          rows.push(stmt.getAsObject())
+        }
+        stmt.free()
+        result = rows
+        
+      } else if (query.toLowerCase().trim() === 'vacuum') {
+        // VACUUM 特殊处理
+        db.run('VACUUM')
+        result = { changes: 0 }
+        
       } else {
-        db.run(query, params, function(err) {
-          if (err) reject(err)
-          else resolve({ changes: this.changes, lastID: this.lastID })
-        })
+        // INSERT/UPDATE/DELETE
+        db.run(query, params)
+        result = { 
+          changes: db.getRowsModified(),
+          lastID: 0
+        }
       }
-    })
-    
-    // 关闭数据库连接
-    await new Promise((resolve) => {
-      db.close((err) => {
-        if (err) console.warn('⚠️ 关闭数据库连接时出现警告:', err.message)
-        resolve()
-      })
-    })
+      
+      // 保存更改回文件（sql.js 是内存数据库）
+      if (!query.toLowerCase().trim().startsWith('select')) {
+        const data = db.export()
+        await fs.writeFile(dbPath, data)
+      }
+      
+    } finally {
+      db.close()
+    }
     
     return result
   } catch (error) {
+    console.error('SQLite 查询错误:', error.message)
     throw error
   }
 })
@@ -1267,17 +1425,6 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.cursor.manager')
 }
 
-// 单实例应用
-const gotTheLock = app.requestSingleInstanceLock()
+// (单实例锁已在文件开头处理)
 
-if (!gotTheLock) {
-  app.quit()
-} else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
-    // 当运行第二个实例时，将会聚焦到mainWindow这个窗口
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
-  })
-}
+
