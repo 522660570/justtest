@@ -82,8 +82,8 @@
               <div class="card-header">
                 <div class="step-number">2</div>
                 <div class="card-title">
-                  <h3>刷新 Cursor</h3>
-                  <p>点击一键续杯可切换新账号</p>
+                  <h3>刷新CURSSOR</h3>
+                  <p>点击一键续杯可切换新账号，恶意点击直接封禁！</p>
                 </div>
               </div>
             </el-card>
@@ -476,8 +476,8 @@ export default {
           console.log('💾 授权码和状态已缓存')
           console.log('🔄 验证后licenseData.value:', licenseData.value)
           
-          // 强制触发响应式更新
-          await new Promise(resolve => setTimeout(resolve, 50))
+          // 强制触发响应式更新（移除不必要的等待）
+          await new Promise(resolve => setTimeout(resolve, 0))
           
           if (result.data.status === 'valid') {
             // 根据授权码类型显示不同的成功消息（2=次卡）
@@ -540,12 +540,8 @@ export default {
           console.warn('⚠️ Cursor进程关闭可能不完整:', killResult.error)
         }
 
-        // 2. 等待进程完全关闭
-        console.log('🔧 步骤2: 等待进程完全关闭...')
-        await new Promise(resolve => setTimeout(resolve, 3000))
-
-        // 3. 重新启动Cursor
-        console.log('🔧 步骤3: 重新启动Cursor')
+        // 2. 立即启动Cursor（进程关闭是瞬时的，无需等待）
+        console.log('🔧 步骤2: 重新启动Cursor')
         const startResult = await cursorService.startCursor()
         if (startResult.success) {
           console.log('✅ Cursor启动成功')
@@ -778,13 +774,13 @@ export default {
           console.warn('⚠️ Cursor启动可能失败:', startResult.error)
         }
         
-        // 7. 简短等待让Cursor加载配置（参考开源项目：2-3秒足够）
+        // 7. 简短等待让Cursor加载配置（优化为0.5秒）
         console.log('⏳ 等待Cursor加载新配置...')
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        await new Promise(resolve => setTimeout(resolve, 500))
         
-        // 8. 验证账号切换结果（缩短超时时间）
+        // 8. 验证账号切换结果（优化超时时间到3秒）
         console.log('🔧 步骤7: 正在验证账号切换结果...')
-        const verifyResult = await cursorService.waitAndVerifyAccountSwitch(newAccount.email, 8000)
+        const verifyResult = await cursorService.waitAndVerifyAccountSwitch(newAccount.email, 3000)
         
         if (verifyResult.success) {
           ElMessage.success(`✅ 账号切换成功！当前账号: ${verifyResult.account.email}`)
@@ -857,8 +853,8 @@ export default {
             console.log('✅ 授权状态已更新:', result.data)
             console.log('🔄 当前licenseData.value:', licenseData.value)
             
-            // 强制触发响应式更新
-            await new Promise(resolve => setTimeout(resolve, 100))
+            // 强制触发响应式更新（移除不必要的等待）
+            await new Promise(resolve => setTimeout(resolve, 0))
             
             if (result.data.status === 'valid') {
               // 根据授权码类型显示不同的消息（2=次卡）
@@ -1194,7 +1190,7 @@ export default {
       if (licenseData.value) {
         const temp = { ...licenseData.value }
         licenseData.value = null
-        await new Promise(resolve => setTimeout(resolve, 10))
+        await new Promise(resolve => setTimeout(resolve, 0))
         licenseData.value = temp
         console.log('✅ UI状态已强制刷新')
         console.log('刷新后的状态:', {

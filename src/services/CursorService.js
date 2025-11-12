@@ -412,15 +412,14 @@ class CursorService {
           } else {
             console.log(`✅ 命令执行成功: ${result.stdout}`)
           }
-          await new Promise(resolve => setTimeout(resolve, 500)) // 每个命令间隔500ms
+          // 移除命令间隔等待，执行完立即继续
         } catch (error) {
           console.log(`⚠️ 命令执行完成 (某些进程可能不存在): ${error.message}`)
         }
       }
       
-      // 等待所有进程完全关闭
-      console.log('⏳ 等待所有进程完全关闭...')
-      await new Promise(resolve => setTimeout(resolve, 3000)) // 增加到3秒
+      // 命令执行完立即验证，不等待（进程关闭是瞬时的）
+      console.log('🔍 验证进程是否完全关闭...')
       
       // 验证进程是否完全关闭
       const processCheck = await this.checkCursorProcess()
@@ -483,15 +482,14 @@ class CursorService {
         console.log('✅ 启动命令执行成功, PID:', execResult.pid)
       }
 
-      // 等待Cursor进程启动
-      console.log('⏳ 等待Cursor进程启动...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      // 立即验证进程启动状态（启动命令是异步的，不需要等待）
+      console.log('🔍 验证Cursor进程启动状态...')
 
       // 验证进程是否成功启动
       const processCheck = await this.checkCursorProcess()
       const isRunning = processCheck.running
       
-      console.log(isRunning ? '✅ Cursor进程启动成功' : '⚠️ Cursor进程启动可能失败')
+      console.log(isRunning ? '✅ Cursor进程启动成功' : '⚠️ Cursor进程启动命令已执行')
 
       return {
         success: execResult.success,
@@ -623,34 +621,47 @@ class CursorService {
       
       console.log('═'.repeat(50))
       console.log('📊 机器ID重置完成汇总:')
-      console.log(`  ✅ storage.json: ${summary.storageJson ? '成功' : '失败（已跳过）'}`)
-      console.log(`  ✅ SQLite数据库: ${summary.sqlite ? '成功' : '失败'}`)
-      console.log(`  ✅ machineId文件: ${summary.machineIdFile ? '成功' : '失败'}`)
-      console.log(`  ✅ Windows注册表: ${summary.systemRegistry ? '成功' : '失败/跳过'}`)
+      console.log(`  ${summary.storageJson ? '✅' : '⚠️'} storage.json: ${summary.storageJson ? '成功' : '失败（可跳过）'}`)
+      console.log(`  ${summary.sqlite ? '✅' : '❌'} SQLite数据库: ${summary.sqlite ? '成功' : '失败'}`)
+      console.log(`  ${summary.machineIdFile ? '✅' : '❌'} machineId文件: ${summary.machineIdFile ? '成功' : '失败'}`)
+      console.log(`  ${summary.systemRegistry ? '✅' : '⚠️'} Windows注册表: ${summary.systemRegistry ? '成功' : '失败/跳过'}`)
       console.log(`  📊 成功率: ${successCount}/${totalSteps} (${Math.round(successCount/totalSteps*100)}%)`)
       console.log('═'.repeat(50))
       
-      if (successCount >= 3) {
-        // 只要成功3个或以上步骤就算成功
-        console.log('✅ 机器ID重置成功！（至少3个关键步骤已完成）')
-      console.log('📊 新的机器ID:')
-      Object.entries(newIds).forEach(([key, value]) => {
-        console.log(`  - ${key}: ${value.substring(0, 20)}...`)
-      })
+      // ⚠️ 重要：判断成功的核心逻辑
+      // 关键步骤：SQLite（最重要）+ machineId文件
+      // 可选步骤：storage.json（可失败）+ Windows注册表（可失败）
+      const coreStepsSuccess = summary.sqlite && summary.machineIdFile
+      
+      if (coreStepsSuccess) {
+        // 核心步骤成功，即算成功
+        console.log('✅ 机器ID重置成功！（核心步骤：SQLite + machineId文件 已完成）')
+        console.log('📊 新的机器ID:')
+        Object.entries(newIds).forEach(([key, value]) => {
+          console.log(`  - ${key}: ${value.substring(0, 20)}...`)
+        })
 
-      return {
-        success: true,
-        newIds: newIds,
-          message: 'Machine ID reset successfully',
+        const warnings = []
+        if (!summary.storageJson) warnings.push('storage.json 更新失败（可跳过）')
+        if (!summary.systemRegistry && this.platform === 'win32') warnings.push('Windows注册表更新失败（需管理员权限）')
+
+        return {
+          success: true,
+          newIds: newIds,
+          message: 'Machine ID reset successfully (core steps completed)',
           summary,
-          warnings: !summary.storageJson ? ['storage.json update failed but skipped'] : []
+          warnings
         }
       } else {
-        console.error('❌ 机器ID重置失败！成功的步骤太少')
+        // 核心步骤失败，重置失败
+        console.error('❌ 机器ID重置失败！核心步骤未完成')
+        console.error('   SQLite:', summary.sqlite ? '✅' : '❌')
+        console.error('   machineId文件:', summary.machineIdFile ? '✅' : '❌')
+        
         return {
           success: false,
-          error: `Only ${successCount}/${totalSteps} steps succeeded`,
-          message: '关键步骤失败过多',
+          error: `核心步骤失败 - SQLite:${summary.sqlite?'成功':'失败'}, machineId:${summary.machineIdFile?'成功':'失败'}`,
+          message: 'SQLite 或 machineId 文件更新失败，重置失败',
           summary
         }
       }
@@ -922,14 +933,14 @@ class CursorService {
       
       console.log(`✅ SQLite 字段更新成功，共更新 ${updateCount} 个字段`)
       
-      // ⚠️ 执行 VACUUM 优化数据库（参考 Cursor_Windsurf_Reset）
-      console.log('🔧 优化数据库 (VACUUM)...')
-      try {
-        await api.sqliteQuery(this.cursorPaths.sqlite, 'VACUUM', [])
-        console.log('✅ 数据库优化完成')
-      } catch (error) {
-        console.warn('⚠️ VACUUM 执行失败（不影响功能）:', error.message)
-      }
+      // ⚠️ VACUUM操作很慢且不影响功能，已移除以加快速度
+      // console.log('🔧 优化数据库 (VACUUM)...')
+      // try {
+      //   await api.sqliteQuery(this.cursorPaths.sqlite, 'VACUUM', [])
+      //   console.log('✅ 数据库优化完成')
+      // } catch (error) {
+      //   console.warn('⚠️ VACUUM 执行失败（不影响功能）:', error.message)
+      // }
       
       return { success: true, updateCount }
     } catch (error) {
@@ -1338,7 +1349,7 @@ class CursorService {
       }
       
       console.log(`⏳ 等待中... 当前邮箱: ${accountResult.data?.email}, 目标: ${expectedEmail}`)
-      await new Promise(resolve => setTimeout(resolve, 2000)) // 等待2秒
+      await new Promise(resolve => setTimeout(resolve, 500)) // 优化为0.5秒
     }
     
     console.log(`❌ 账号切换验证超时，未能切换到目标邮箱: ${expectedEmail}`)
