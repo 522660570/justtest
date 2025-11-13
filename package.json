@@ -1,6 +1,6 @@
 {
   "name": "cursor-manager-vue",
-  "version": "1.2.1",
+  "version": "1.3.3",
   "description": "Cursor AI账号管理工具",
   "author": "Li <522660570@qq.com>",
   "main": "electron/main.js",
@@ -49,7 +49,7 @@
   },
   "build": {
     "appId": "com.cursor.manager",
-    "productName": "Cursor续杯工具",
+    "productName": "Cursor续杯",
     "publish": null,
     "directories": {
       "output": "dist-electron",
@@ -57,7 +57,7 @@
     },
     "icon": "build/icon.ico",
     "portable": {
-      "artifactName": "${productName}_${arch}.exe",
+      "artifactName": "${productName}_v${version}_win_${arch}.${ext}",
       "requestExecutionLevel": "admin",
       "useZip": false
     },
@@ -67,7 +67,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "${productName}-${version}-installer.exe",
+      "artifactName": "${productName}_v${version}_win_${arch}.${ext}",
       "differentialPackage": false
     },
     "compression": "maximum",
