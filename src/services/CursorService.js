@@ -412,22 +412,17 @@ class CursorService {
           } else {
             console.log(`✅ 命令执行成功: ${result.stdout}`)
           }
-          await new Promise(resolve => setTimeout(resolve, 500)) // 每个命令间隔500ms
+          // 移除多余等待，命令发出即继续
         } catch (error) {
           console.log(`⚠️ 命令执行完成 (某些进程可能不存在): ${error.message}`)
         }
       }
       
-      // 等待所有进程完全关闭
-      console.log('⏳ 等待所有进程完全关闭...')
-      await new Promise(resolve => setTimeout(resolve, 3000)) // 增加到3秒
-      
-      // 验证进程是否完全关闭
+      // 直接返回结果，不进行额外等待
       const processCheck = await this.checkCursorProcess()
       const isFullyClosed = !processCheck.running
-      
-      console.log(isFullyClosed ? '✅ 所有Cursor进程已完全关闭' : '⚠️ 某些进程可能仍在运行')
-      
+      console.log(isFullyClosed ? '✅ 进程关闭完成' : '⚠️ 可能仍有残留')
+
       return {
         success: isFullyClosed,
         message: isFullyClosed ? 'All Cursor processes terminated completely' : 'Some processes may still be running',
@@ -452,7 +447,8 @@ class CursorService {
       let command
       switch (this.platform) {
         case 'win32':
-          command = `"${this.cursorPaths.executable}"`
+          // 使用 start 即发即走，避免阻塞和前台卡顿
+          command = `start "" "${this.cursorPaths.executable}"`
           break
         case 'darwin':
           command = `open "${this.cursorPaths.executable}"`
@@ -480,26 +476,13 @@ class CursorService {
       if (!execResult.success) {
         console.warn('⚠️ 启动命令执行失败:', execResult.error)
       } else {
-        console.log('✅ 启动命令执行成功, PID:', execResult.pid)
+        console.log('✅ 启动命令已下发', execResult.pid ? `PID: ${execResult.pid}` : '')
       }
 
-      // 等待Cursor进程启动
-      console.log('⏳ 等待Cursor进程启动...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
-      // 验证进程是否成功启动
-      const processCheck = await this.checkCursorProcess()
-      const isRunning = processCheck.running
-      
-      console.log(isRunning ? '✅ Cursor进程启动成功' : '⚠️ Cursor进程启动可能失败')
-
+      // 不再等待与校验，交由上层流程或用户手动确认
       return {
         success: execResult.success,
-        message: execResult.success ? 
-          (isRunning ? 'Cursor started and running' : 'Cursor start command executed') :
-          'Cursor start failed',
-        processRunning: isRunning,
-        pid: execResult.pid
+        message: execResult.success ? 'Cursor start command executed' : 'Failed to execute Cursor start command'
       }
     } catch (error) {
       return {

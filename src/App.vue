@@ -722,34 +722,17 @@ export default {
         }
         console.log('✅ 账号存储更新成功')
 
-        // 6. 启动Cursor（参考开源项目：立即启动，无需等待）
+        // 6. 启动Cursor（即发即走，不等待）
         console.log('🔧 步骤6: 正在启动Cursor...')
         const startResult = await cursorService.startCursor()
         if (startResult.success) {
           console.log('✅ Cursor启动命令已执行')
+          ElMessage.success('✅ 续杯完成，已启动 Cursor')
         } else {
           console.warn('⚠️ Cursor启动可能失败:', startResult.error)
+          ElMessage.warning('⚠️ 启动命令可能失败，请手动检查 Cursor')
         }
-        
-        // 7. 简短等待让Cursor加载配置（参考开源项目：2-3秒足够）
-        console.log('⏳ 等待Cursor加载新配置...')
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        // 8. 验证账号切换结果（缩短超时时间）
-        console.log('🔧 步骤7: 正在验证账号切换结果...')
-        const verifyResult = await cursorService.waitAndVerifyAccountSwitch(newAccount.email, 8000)
-        
-        if (verifyResult.success) {
-          ElMessage.success(`✅ 账号切换成功！当前账号: ${verifyResult.account.email}`)
-          console.log('🎉 账号切换成功验证:', verifyResult.account)
-        } else {
-          if (verifyResult.timeout) {
-            ElMessage.error(`❌ 账号切换验证超时！目标: ${newAccount.email}, 最终账号: ${verifyResult.finalAccount?.email || '未知'}`)
-          } else {
-            ElMessage.error(`❌ 账号切换验证失败！`)
-          }
-          console.log('❌ 账号切换验证失败:', verifyResult)
-        }
+        // 不再等待与校验，交由用户在 Cursor 中直接体验
 
         console.log('✅ Pro续期流程执行完成')
         
