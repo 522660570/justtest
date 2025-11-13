@@ -711,19 +711,40 @@ ipcMain.handle('fs-write-file', async (event, filePath, data, encoding = 'utf8')
 })
 
 ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
+  const startTime = Date.now()
+  
   try {
     // 使用 sql.js（纯 JavaScript 实现，无需编译，跨平台零问题）
-    const initSqlJs = require('sql.js')
+    console.log('🗄️ SQLite 查询开始:', query.substring(0, 50))
+    
+    // 动态加载 sql.js（支持打包后的路径）
+    let initSqlJs
+    try {
+      // 尝试直接 require
+      initSqlJs = require('sql.js')
+    } catch (error) {
+      // 如果失败，尝试从 unpacked 路径加载
+      const sqlJsPath = app.isPackaged 
+        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js')
+        : path.join(__dirname, '..', 'node_modules', 'sql.js')
+      console.log('尝试从路径加载 sql.js:', sqlJsPath)
+      initSqlJs = require(sqlJsPath)
+    }
+    
     const SQL = await initSqlJs()
+    console.log('✅ sql.js 模块加载成功')
     
     // 读取数据库文件
     const buffer = await fs.readFile(dbPath)
     const db = new SQL.Database(buffer)
+    console.log('✅ 数据库文件已加载到内存')
     
     let result
     
     try {
-      if (query.toLowerCase().trim().startsWith('select')) {
+      const queryLower = query.toLowerCase().trim()
+      
+      if (queryLower.startsWith('select')) {
         // SELECT 查询
         const stmt = db.prepare(query)
         stmt.bind(params)
@@ -734,35 +755,47 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
         }
         stmt.free()
         result = rows
+        console.log(`✅ SELECT 查询完成，返回 ${rows.length} 行`)
         
-      } else if (query.toLowerCase().trim() === 'vacuum') {
+      } else if (queryLower === 'vacuum') {
         // VACUUM 特殊处理
         db.run('VACUUM')
         result = { changes: 0 }
+        console.log('✅ VACUUM 执行完成')
         
       } else {
         // INSERT/UPDATE/DELETE
         db.run(query, params)
+        const changes = db.getRowsModified()
         result = { 
-          changes: db.getRowsModified(),
+          changes: changes,
           lastID: 0
         }
+        console.log(`✅ 修改查询完成，影响 ${changes} 行`)
       }
       
       // 保存更改回文件（sql.js 是内存数据库）
-      if (!query.toLowerCase().trim().startsWith('select')) {
+      if (!queryLower.startsWith('select')) {
         const data = db.export()
-        await fs.writeFile(dbPath, data)
+        const dataBuffer = Buffer.from(data)
+        await fs.writeFile(dbPath, dataBuffer)
+        console.log('✅ 数据库更改已保存到文件')
       }
       
     } finally {
       db.close()
     }
     
+    const duration = Date.now() - startTime
+    console.log(`✅ SQLite 查询总耗时: ${duration}ms`)
+    
     return result
   } catch (error) {
-    console.error('SQLite 查询错误:', error.message)
-    throw error
+    console.error('❌ SQLite 查询错误:', error)
+    console.error('   查询:', query)
+    console.error('   参数:', params)
+    console.error('   数据库路径:', dbPath)
+    throw new Error(`SQLite 错误: ${error.message}`)
   }
 })
 

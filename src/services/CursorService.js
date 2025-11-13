@@ -623,34 +623,47 @@ class CursorService {
       
       console.log('═'.repeat(50))
       console.log('📊 机器ID重置完成汇总:')
-      console.log(`  ✅ storage.json: ${summary.storageJson ? '成功' : '失败（已跳过）'}`)
-      console.log(`  ✅ SQLite数据库: ${summary.sqlite ? '成功' : '失败'}`)
-      console.log(`  ✅ machineId文件: ${summary.machineIdFile ? '成功' : '失败'}`)
-      console.log(`  ✅ Windows注册表: ${summary.systemRegistry ? '成功' : '失败/跳过'}`)
+      console.log(`  ${summary.storageJson ? '✅' : '⚠️'} storage.json: ${summary.storageJson ? '成功' : '失败（可跳过）'}`)
+      console.log(`  ${summary.sqlite ? '✅' : '❌'} SQLite数据库: ${summary.sqlite ? '成功' : '失败'}`)
+      console.log(`  ${summary.machineIdFile ? '✅' : '❌'} machineId文件: ${summary.machineIdFile ? '成功' : '失败'}`)
+      console.log(`  ${summary.systemRegistry ? '✅' : '⚠️'} Windows注册表: ${summary.systemRegistry ? '成功' : '失败/跳过'}`)
       console.log(`  📊 成功率: ${successCount}/${totalSteps} (${Math.round(successCount/totalSteps*100)}%)`)
       console.log('═'.repeat(50))
       
-      if (successCount >= 3) {
-        // 只要成功3个或以上步骤就算成功
-        console.log('✅ 机器ID重置成功！（至少3个关键步骤已完成）')
-      console.log('📊 新的机器ID:')
-      Object.entries(newIds).forEach(([key, value]) => {
-        console.log(`  - ${key}: ${value.substring(0, 20)}...`)
-      })
+      // ⚠️ 重要：判断成功的核心逻辑
+      // 关键步骤：SQLite（最重要）+ machineId文件
+      // 可选步骤：storage.json（可失败）+ Windows注册表（可失败）
+      const coreStepsSuccess = summary.sqlite && summary.machineIdFile
+      
+      if (coreStepsSuccess) {
+        // 核心步骤成功，即算成功
+        console.log('✅ 机器ID重置成功！（核心步骤：SQLite + machineId文件 已完成）')
+        console.log('📊 新的机器ID:')
+        Object.entries(newIds).forEach(([key, value]) => {
+          console.log(`  - ${key}: ${value.substring(0, 20)}...`)
+        })
 
-      return {
-        success: true,
-        newIds: newIds,
-          message: 'Machine ID reset successfully',
+        const warnings = []
+        if (!summary.storageJson) warnings.push('storage.json 更新失败（可跳过）')
+        if (!summary.systemRegistry && this.platform === 'win32') warnings.push('Windows注册表更新失败（需管理员权限）')
+
+        return {
+          success: true,
+          newIds: newIds,
+          message: 'Machine ID reset successfully (core steps completed)',
           summary,
-          warnings: !summary.storageJson ? ['storage.json update failed but skipped'] : []
+          warnings
         }
       } else {
-        console.error('❌ 机器ID重置失败！成功的步骤太少')
+        // 核心步骤失败，重置失败
+        console.error('❌ 机器ID重置失败！核心步骤未完成')
+        console.error('   SQLite:', summary.sqlite ? '✅' : '❌')
+        console.error('   machineId文件:', summary.machineIdFile ? '✅' : '❌')
+        
         return {
           success: false,
-          error: `Only ${successCount}/${totalSteps} steps succeeded`,
-          message: '关键步骤失败过多',
+          error: `核心步骤失败 - SQLite:${summary.sqlite?'成功':'失败'}, machineId:${summary.machineIdFile?'成功':'失败'}`,
+          message: 'SQLite 或 machineId 文件更新失败，重置失败',
           summary
         }
       }
@@ -927,7 +940,7 @@ class CursorService {
       try {
         await api.sqliteQuery(this.cursorPaths.sqlite, 'VACUUM', [])
         console.log('✅ 数据库优化完成')
-      } catch (error) {
+    } catch (error) {
         console.warn('⚠️ VACUUM 执行失败（不影响功能）:', error.message)
       }
       
@@ -1158,23 +1171,31 @@ class CursorService {
       }
       console.log('✅ 数据库文件存在，开始更新')
 
-      // 🔑 关键：参考cursor-free-vip的cursor_auth.py实现
-      // 后端已经返回了完整的 JWT，直接使用即可，不需要提取
+      // 🔑 支持两种模式：
+      // 1) 完整令牌模式：accessToken(+refreshToken)
+      // 2) SessionToken 模式：仅 email+sessionToken（写入 WorkosCursorSessionToken）
       const finalAccessToken = accountData.accessToken
       const finalRefreshToken = accountData.refreshToken
-      
-      // 验证必要字段
-      if (!finalAccessToken || !finalAccessToken.trim()) {
-        throw new Error('后端返回的 accessToken 为空')
-      }
-      
+
       if (!accountData.email || !accountData.email.trim()) {
         throw new Error('后端返回的 email 为空')
       }
-      
-      console.log('✅ 后端返回的数据验证通过')
-      console.log('📊 accessToken 长度:', finalAccessToken.length)
-      console.log('📊 refreshToken 长度:', finalRefreshToken?.length || 0)
+
+      const usingSessionOnly = !finalAccessToken && !!accountData.sessionToken
+
+      if (!usingSessionOnly) {
+        if (!finalAccessToken || !finalAccessToken.trim()) {
+          throw new Error('后端返回的 accessToken 为空，且未提供 sessionToken')
+        }
+      }
+
+      console.log('✅ 数据验证通过')
+      if (!usingSessionOnly) {
+        console.log('📊 accessToken 长度:', finalAccessToken.length)
+        console.log('📊 refreshToken 长度:', finalRefreshToken?.length || 0)
+      } else {
+        console.log('🔑 使用 SessionToken 模式（仅写入 WorkosCursorSessionToken）')
+      }
       console.log('📧 email:', accountData.email)
       console.log('🔐 signUpType:', accountData.signUpType || 'Auth0')
       
@@ -1183,11 +1204,20 @@ class CursorService {
       const signUpType = accountData.signUpType === 'Auth0' ? 'Auth_0' : accountData.signUpType
       
       const updates = [
-        ['cursorAuth/cachedSignUpType', signUpType || 'Auth_0'],  // 注意：Auth_0 带下划线
-        ['cursorAuth/cachedEmail', accountData.email],
-        ['cursorAuth/accessToken', finalAccessToken],
-        ['cursorAuth/refreshToken', finalRefreshToken || finalAccessToken]
+        ['cursorAuth/cachedSignUpType', signUpType || 'Auth_0'],
+        ['cursorAuth/cachedEmail', accountData.email]
       ]
+
+      if (usingSessionOnly) {
+        updates.push(['WorkosCursorSessionToken', accountData.sessionToken])
+      } else {
+        updates.push(['cursorAuth/accessToken', finalAccessToken])
+        updates.push(['cursorAuth/refreshToken', finalRefreshToken || finalAccessToken])
+        // 如同时提供了 sessionToken，也同步写入以提升兼容性
+        if (accountData.sessionToken) {
+          updates.push(['WorkosCursorSessionToken', accountData.sessionToken])
+        }
+      }
 
       console.log('🔧 准备更新以下字段:')
       updates.forEach(([key, value]) => {
@@ -1271,7 +1301,8 @@ class CursorService {
         'cursorAuth/cachedEmail',
         'cursorAuth/cachedSignUpType',
         'cursorAuth/accessToken',
-        'cursorAuth/refreshToken'
+        'cursorAuth/refreshToken',
+        'WorkosCursorSessionToken'
       ]
 
       const authData = {}
@@ -1284,14 +1315,16 @@ class CursorService {
       // 数据库连接由IPC处理程序自动管理
       
       const hasAccessToken = !!authData['cursorAuth/accessToken']
+      const hasSessionToken = !!authData['WorkosCursorSessionToken']
       
       const accountInfo = {
         email: authData['cursorAuth/cachedEmail'] || 'Not logged in',
         signUpType: authData['cursorAuth/cachedSignUpType'] || 'Unknown',
         hasAccessToken: hasAccessToken,
         hasRefreshToken: !!authData['cursorAuth/refreshToken'],
-        // 🔑 认证判断：有 accessToken 且有 email 就算认证成功
-        isAuthenticated: hasAccessToken && !!authData['cursorAuth/cachedEmail']
+        hasSessionToken: hasSessionToken,
+        // 🔑 认证判断：有 sessionToken 或 accessToken 且有 email 就算认证成功
+        isAuthenticated: !!authData['cursorAuth/cachedEmail'] && (hasAccessToken || hasSessionToken)
       }
 
       console.log('📊 当前账号信息 (从SQLite读取):', accountInfo)

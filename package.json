@@ -35,7 +35,7 @@
     "@element-plus/icons-vue": "^2.3.0",
     "axios": "^1.6.0",
     "element-plus": "^2.4.0",
-    "sql.js": "^1.13.0",
+    "sql.js": "^1.11.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {
@@ -56,25 +56,6 @@
       "buildResources": "build"
     },
     "icon": "build/icon.ico",
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "package.json",
-      "node_modules/**/*",
-      "!node_modules/@types/**/*",
-      "!node_modules/.cache/**/*",
-      "!node_modules/**/README.md",
-      "!node_modules/**/CHANGELOG.md",
-      "!node_modules/**/LICENSE",
-      "!node_modules/**/*.md",
-      "!node_modules/**/*.ts",
-      "!node_modules/**/*.map",
-      "!node_modules/**/test/**/*",
-      "!node_modules/**/tests/**/*",
-      "!node_modules/**/docs/**/*",
-      "!node_modules/**/example/**/*",
-      "!node_modules/**/examples/**/*"
-    ],
     "portable": {
       "artifactName": "${productName}_${arch}.exe",
       "requestExecutionLevel": "admin",
@@ -95,6 +76,25 @@
     "asarUnpack": [
       "node_modules/sql.js/**/*"
     ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "node_modules/sql.js/**/*",
+      "!node_modules/@types/**/*",
+      "!node_modules/.cache/**/*",
+      "!node_modules/**/README.md",
+      "!node_modules/**/CHANGELOG.md",
+      "!node_modules/**/LICENSE",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.map",
+      "!node_modules/**/test/**/*",
+      "!node_modules/**/tests/**/*",
+      "!node_modules/**/docs/**/*",
+      "!node_modules/**/example/**/*",
+      "!node_modules/**/examples/**/*"
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
@@ -107,7 +107,7 @@
         }
       ],
       "requestedExecutionLevel": "asInvoker",
-      "artifactName": "${productName}_${arch}.${ext}",
+      "artifactName": "${productName}_v${version}_win_${arch}.${ext}",
       "verifyUpdateCodeSignature": false,
       "legalTrademarks": "Cursor Manager",
       "extraResources": [
@@ -135,7 +135,7 @@
         }
       ],
       "category": "public.app-category.developer-tools",
-      "artifactName": "${productName}_mac_${arch}.${ext}",
+      "artifactName": "${productName}_v${version}_mac_${arch}.${ext}",
       "electronLanguages": [
         "en",
         "zh_CN"
@@ -172,7 +172,7 @@
         }
       ],
       "category": "Development",
-      "artifactName": "${productName}_linux_${arch}.${ext}",
+      "artifactName": "${productName}_v${version}_linux_${arch}.${ext}",
       "executableName": "cursor-manager",
       "synopsis": "Cursor AI账号管理工具",
       "description": "用于管理和优化Cursor AI的工具",

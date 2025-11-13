@@ -1,0 +1,13 @@
+[
+  {
+    "email": "test1@example.com",
+    "WorkosCursorSessionToken": "your-session-token-here-1",
+    "registration_time": "2024-11-01 10:00:00"
+  },
+  {
+    "email": "test2@example.com",
+    "WorkosCursorSessionToken": "your-session-token-here-2",
+    "registration_time": "2024-11-02 15:30:00"
+  }
+]
+

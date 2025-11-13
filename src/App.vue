@@ -82,8 +82,8 @@
               <div class="card-header">
                 <div class="step-number">2</div>
                 <div class="card-title">
-                  <h3>刷新 Cursor</h3>
-                  <p>点击一键续杯可切换新账号</p>
+                  <h3>刷新CURSSOR</h3>
+                  <p>点击一键续杯可切换新账号，恶意点击直接封禁！</p>
                 </div>
               </div>
             </el-card>
@@ -677,8 +677,6 @@ export default {
         console.log('🔑 检查关键字段:')
         console.log('  - email:', newAccount.email ? '✅' : '❌')
         console.log('  - sessionToken:', newAccount.sessionToken ? '✅' : '❌')
-        console.log('  - accessToken:', newAccount.accessToken ? '✅' : '❌')
-        console.log('  - refreshToken:', newAccount.refreshToken ? '✅' : '❌')
         console.log('  - signUpType:', newAccount.signUpType ? '✅' : '❌')
         
         // 验证新账号数据完整性
@@ -691,56 +689,11 @@ export default {
           throw new Error('获取的新账号缺少sessionToken')
         }
         
-        // 🔑 兼容新旧客户端策略：
-        // - 如果后端返回了 accessToken（数据库中已有，说明已通过批量刷新），直接使用（旧客户端）
-        // - 如果后端没有返回 accessToken（数据库中没有），前端调用 reftoken 接口获取（新客户端）
-        if (!newAccount.accessToken || newAccount.accessToken.trim() === '') {
-          console.log('🔧 步骤2: 后端未返回 accessToken，前端从 reftoken 接口获取...')
-          try {
-            // 确保 token 使用 URL 编码的分隔符 %3A%3A
-            let encodedToken = newAccount.sessionToken
-            if (!newAccount.sessionToken.includes('%3A%3A') && newAccount.sessionToken.includes('::')) {
-              encodedToken = newAccount.sessionToken.replace(/::/g, '%3A%3A')
-              console.log('🔧 将 :: 转换为 %3A%3A')
-            }
-            
-            const refTokenUrl = `https://token.cursorpro.com.cn/reftoken?token=${encodedToken}`
-            console.log('🔧 调用 reftoken 接口...')
-            
-            const refTokenResponse = await fetch(refTokenUrl, {
-              method: 'GET',
-              headers: {
-                'User-Agent': 'Mozilla/5.0'
-              }
-            })
-            
-            if (!refTokenResponse.ok) {
-              throw new Error(`reftoken API 请求失败: ${refTokenResponse.status} ${refTokenResponse.statusText}`)
-            }
-            
-            const refTokenResult = await refTokenResponse.json()
-            console.log('🔧 reftoken API 响应:', refTokenResult)
-            
-            if (refTokenResult.code === 0 && refTokenResult.msg === '获取成功') {
-              // 成功获取 AccessToken
-              newAccount.accessToken = refTokenResult.data.accessToken
-              newAccount.refreshToken = refTokenResult.data.accessToken // refreshToken 使用相同的值
-              console.log('✅ 从 reftoken 接口成功获取 AccessToken')
-              console.log('📊 AccessToken 长度:', newAccount.accessToken.length)
-              console.log('📊 剩余天数:', refTokenResult.data.days_left)
-              console.log('📊 过期时间:', refTokenResult.data.expire_time)
-            } else {
-              // reftoken 接口失败，直接抛出错误
-              console.error('❌ reftoken 接口失败:', refTokenResult.msg)
-              throw new Error('reftoken 接口失败: ' + refTokenResult.msg)
-            }
-          } catch (error) {
-            console.error('❌ 获取 AccessToken 失败:', error)
-            throw new Error('获取 AccessToken 失败: ' + error.message)
-          }
-        } else {
-          console.log('✅ 后端已返回 accessToken（数据库中已有，已通过批量刷新），直接使用')
-          console.log('📊 AccessToken 长度:', newAccount.accessToken.length)
+        // 🔑 改为仅使用 SessionToken 模式：不再通过 reftoken 获取 AccessToken
+        // 确保使用 URL 编码的分隔符 %3A%3A
+        if (!newAccount.sessionToken.includes('%3A%3A') && newAccount.sessionToken.includes('::')) {
+          newAccount.sessionToken = newAccount.sessionToken.replace(/::/g, '%3A%3A')
+          console.log('🔧 将 :: 转换为 %3A%3A')
         }
 
         // 3. 彻底关闭Cursor (增强版)
