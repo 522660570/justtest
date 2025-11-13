@@ -5,8 +5,8 @@
  */
 export const API_CONFIG = {
   // 后端服务器地址
-  BASE_URL: 'http://111.228.33.54/api/',
-  // BASE_URL: 'http://localhost:8088',
+  // BASE_URL: 'http://111.228.33.54/api/',
+  BASE_URL: 'http://localhost:8088',
   
   // API 超时时间（毫秒）
   TIMEOUT: 30000,
