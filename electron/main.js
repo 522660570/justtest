@@ -984,24 +984,17 @@ ipcMain.handle('spawn-detached', async (event, command, args = []) => {
   try {
     const { spawn } = require('child_process')
     
-    console.log(' 启动命令:', command, args)
+    console.log('🚀 启动命令:', command, args)
     
     let child
     if (process.platform === 'win32') {
-      // Windows特殊处理：直接启动exe文件，并将工作目录设置为exe所在目录
-      const path = require('path')
-      let options = {
+      // Windows特殊处理：直接启动exe文件
+      child = spawn(command, args, {
         detached: true,
         stdio: 'ignore',
-        shell: false,
-        windowsHide: false
-      }
-      try {
-        if (typeof command === 'string' && /\\|\//.test(command) && command.toLowerCase().endsWith('.exe')) {
-          options.cwd = path.dirname(command)
-        }
-      } catch {}
-      child = spawn(command, args, options)
+        shell: false,  // Windows上不使用shell
+        windowsHide: false  // 显示窗口
+      })
     } else {
       // macOS和Linux
       child = spawn(command, args, {
@@ -1074,22 +1067,24 @@ ipcMain.handle('find-cursor-executable', async () => {
       console.log('⚠️ 无法通过注册表查找Cursor')
     }
     
-    // 方法3: 在常见安装位置搜索（使用环境变量更可靠）
-    const homeDir = os.homedir()
-    const localAppData = process.env.LOCALAPPDATA || (homeDir ? `${homeDir}\\AppData\\Local` : '')
-    const programFiles = process.env['ProgramFiles'] || 'C:/Program Files'
-    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)'
-
+    // 方法3: 在常见安装位置搜索
     const commonPaths = [
-      `${localAppData}\\Programs\\Cursor\\Cursor.exe`,
-      `${programFiles}\\Cursor\\Cursor.exe`,
-      `${programFilesX86}\\Cursor\\Cursor.exe`,
+      'C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Cursor\\Cursor.exe',
+      'C:\\Program Files\\Cursor\\Cursor.exe',
+      'C:\\Program Files (x86)\\Cursor\\Cursor.exe',
       'D:\\Cursor\\Cursor.exe',
       'E:\\Cursor\\Cursor.exe',
       'F:\\Cursor\\Cursor.exe'
     ]
-
-    for (const commonPath of commonPaths) {
+    
+    const homeDir = os.homedir()
+    const username = process.env.USERNAME || process.env.USER || 'User'
+    
+    for (let commonPath of commonPaths) {
+      // 展开环境变量
+      commonPath = commonPath.replace('%USERNAME%', username)
+      commonPath = commonPath.replace('~', homeDir)
+      
       try {
         await fs.access(commonPath)
         console.log('✅ 在常见位置找到Cursor路径:', commonPath)
@@ -1099,22 +1094,7 @@ ipcMain.handle('find-cursor-executable', async () => {
       }
     }
     
-    // 方法4: where 查找 PATH 中的 Cursor.exe
-    try {
-      const whereRes = await execAsync('where Cursor.exe', { timeout: 5000 })
-      const lines = whereRes.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-      for (const p of lines) {
-        try {
-          await fs.access(p)
-          console.log('✅ 通过 where 找到Cursor路径:', p)
-          return { success: true, path: p, method: 'where' }
-        } catch {}
-      }
-    } catch (e) {
-      // 继续使用全盘搜索
-    }
-
-    // 方法5: 在整个系统中搜索 Cursor.exe（最慢，兜底）
+    // 方法4: 在整个系统中搜索 Cursor.exe
     try {
       const searchResult = await execAsync('powershell "Get-ChildItem -Path C:\\ -Recurse -Name \'Cursor.exe\' -ErrorAction SilentlyContinue | Select-Object -First 3"', { timeout: 15000 })
       const searchPaths = searchResult.stdout.split('\n').filter(p => p.trim())
@@ -1305,6 +1285,7 @@ ipcMain.handle('clear-log-file', async () => {
   }
 })
 
+// 获取 Cursor 版本号
 ipcMain.handle('get-cursor-version', async () => {
   try {
     console.log('🔍 正在获取 Cursor 版本号...')
@@ -1365,73 +1346,20 @@ ipcMain.handle('get-cursor-version', async () => {
       console.log('⚠️ 文件方式失败:', fileError.message)
     }
     
-    // 方法2b: 当进程未运行时，复用可执行文件定位逻辑后读取 package.json/product.json
+    // 方法3: 通过注册表获取版本信息 (Windows)
     if (process.platform === 'win32') {
       try {
-        const homeDir = os.homedir()
-        const localAppData = process.env.LOCALAPPDATA || (homeDir ? `${homeDir}\\AppData\\Local` : '')
-        const programFiles = process.env['ProgramFiles'] || 'C:/Program Files'
-        const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)'
-        const tryPaths = [
-          `${localAppData}\\Programs\\Cursor\\Cursor.exe`,
-          `${programFiles}\\Cursor\\Cursor.exe`,
-          `${programFilesX86}\\Cursor\\Cursor.exe`
-        ]
-        let exeFound = null
-        for (const p of tryPaths) {
-          try { await fs.access(p); exeFound = p; break } catch {}
-        }
-        if (!exeFound) {
-          try {
-            const whereRes = await execAsync('where Cursor.exe', { timeout: 5000 })
-            const lines = whereRes.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-            for (const p of lines) { try { await fs.access(p); exeFound = p; break } catch {} }
-          } catch {}
-        }
-        if (exeFound) {
-          const exeDir = path.dirname(exeFound)
-          const pkgCandidates = [
-            path.join(exeDir, 'resources', 'app', 'package.json'),
-            path.join(exeDir, 'resources', 'app', 'product.json'),
-            path.join(exeDir, 'resources', 'package.json')
-          ]
-          for (const pkg of pkgCandidates) {
-            try {
-              const data = await fs.readFile(pkg, 'utf8')
-              const json = JSON.parse(data)
-              if (json.version) {
-                console.log('✅ 通过已定位的安装目录读取版本:', json.version)
-                return { success: true, version: json.version, method: 'package.json (resolved exe)' }
-              }
-            } catch {}
-          }
-        }
-      } catch {}
-    }
-
-    // 方法3: 通过注册表获取版本信息 (Windows) - 扩展到 HKLM 与 Wow6432Node
-    if (process.platform === 'win32') {
-      try {
-        const regQueries = [
-          'reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"',
-          'reg query "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"',
-          'reg query "HKEY_LOCAL_MACHINE\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"'
-        ]
-        for (const q of regQueries) {
-          try {
-            const regResult = await execAsync(q, { timeout: 6000 })
-            const lines = regResult.stdout.split('\n')
-            for (const line of lines) {
-              if (line.includes('DisplayVersion')) {
-                const match = line.match(/REG_SZ\s+(.+)/)
-                if (match) {
-                  const version = match[1].trim()
-                  console.log('✅ 通过注册表获取 Cursor 版本:', version)
-                  return { success: true, version, method: 'registry' }
-                }
-              }
+        const regResult = await execAsync('reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"', { timeout: 5000 })
+        const lines = regResult.stdout.split('\n')
+        for (const line of lines) {
+          if (line.includes('DisplayVersion')) {
+            const match = line.match(/REG_SZ\s+(.+)/)
+            if (match) {
+              const version = match[1].trim()
+              console.log('✅ 通过注册表获取 Cursor 版本:', version)
+              return { success: true, version, method: 'registry' }
             }
-          } catch {}
+          }
         }
       } catch (regError) {
         console.log('⚠️ 注册表方式失败:', regError.message)

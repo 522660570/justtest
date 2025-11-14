@@ -743,27 +743,6 @@ export default {
           console.warn('⚠️ Cursor启动可能失败:', startResult.error)
           ElMessage.warning('⚠️ 启动命令可能失败，请手动检查 Cursor')
         }
-        setTimeout(async () => {
-          try {
-            const ps = await cursorService.checkCursorProcess()
-            if (!ps.running) {
-              const fb = await cursorService.startCursorFallback()
-              if (!fb.success) {
-                ElMessage.warning('⚠️ 无法自动启动 Cursor，请手动启动')
-              }
-            }
-          } catch {}
-        }, 1500)
-        setTimeout(async () => {
-          try {
-            if (window.electronAPI && window.electronAPI.getCursorVersion) {
-              const r = await window.electronAPI.getCursorVersion()
-              if (r && r.success && r.version) {
-                cursorEditorVersion.value = r.version
-              }
-            }
-          } catch {}
-        }, 3000)
 
         console.log('✅ Pro续期流程执行完成')
         

@@ -276,7 +276,6 @@ class CursorService {
       let command
       switch (this.platform) {
         case 'win32':
-          // Windows: 温和地关闭Cursor进程，避免确认弹框
           command = 'tasklist /FI "IMAGENAME eq Cursor.exe" /FO CSV /NH'
           break
         case 'darwin':
@@ -307,19 +306,16 @@ class CursorService {
       const output = result.stdout ? result.stdout.trim() : ''
       
       if (this.platform === 'win32') {
-        // Windows tasklist 输出：
-        // - 找到：CSV 行包含 Cursor.exe
-        // - 未找到：提示文本（本地化），因此不能仅依赖英文串
-        isRunning = /"Cursor\.exe"/i.test(output)
+        // Windows tasklist 输出格式：
+        // - 找到进程：'"Cursor.exe","12345","Console","1","123,456 K"'
+        // - 未找到：'INFO: No tasks are running which match the specified criteria.'
+        // 或者 taskkill 的错误输出也可能被捕获
         
-        // 备用：使用 PowerShell 再次确认
-        if (!isRunning) {
-          const ps = await api.execCommand('powershell "(Get-Process -Name Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Id) 2>$null"')
-          const psOut = (ps.stdout || '').trim()
-          if (/^\d+$/.test(psOut)) {
-            isRunning = true
-          }
-        }
+        // 只有当输出包含 .exe 且是 CSV 格式时才认为进程存在
+        isRunning = output.includes('Cursor.exe') && 
+                   output.includes('"') && 
+                   !output.toLowerCase().includes('no tasks') &&
+                   !output.toLowerCase().includes('not found')
       } else {
         // macOS/Linux: pgrep 找到进程时会输出PID（纯数字）
         // 没找到时没有输出（或退出码非0）
@@ -448,71 +444,45 @@ class CursorService {
     await this.initialize()
     
     try {
-      // 启动前先确保可执行文件路径有效，不存在则尝试重新查找
-      let exePath = this.cursorPaths.executable
-      let exists = false
-      try {
-        exists = await api.fsAccess(exePath)
-      } catch (_) {
-        exists = false
-      }
-
-      if (!exists) {
-        console.warn('⚠️ 当前可执行文件不存在，尝试重新查找:', exePath)
-        const found = await this.findCursorExecutable()
-        if (found) {
-          this.cursorPaths.executable = found
-          exePath = found
-          console.log('✅ 已更新可执行文件路径:', exePath)
-        } else {
-          return { success: false, error: '未找到 Cursor 可执行文件，请确认已安装 Cursor' }
-        }
-      }
-
-      // 根据平台以最稳妥的方式启动
-      let spawnResult
+      let command
       switch (this.platform) {
         case 'win32':
-          // 直接以 detached 方式启动 exe，避免 cmd/start 对空格路径的各种问题
-          spawnResult = await api.spawnDetached(exePath, [])
+          // Windows: 使用 cmd /c start 确保在 cmd.exe 中执行
+          command = `cmd /c start "" "${this.cursorPaths.executable}"`
           break
         case 'darwin':
-          // 使用 open 打开应用
-          spawnResult = await api.spawnDetached('open', [exePath])
+          command = `open "${this.cursorPaths.executable}"`
           break
         case 'linux':
-          spawnResult = await api.spawnDetached(exePath, [])
+          command = this.cursorPaths.executable
           break
         case 'browser':
-          return { success: true, message: 'Browser mode: simulated Cursor start' }
-        default:
-          return { success: false, error: `Unsupported platform: ${this.platform}` }
-      }
-
-      if (!spawnResult.success) {
-        console.warn('⚠️ 启动可能失败:', spawnResult.error)
-      } else {
-        console.log('✅ 启动命令已下发', spawnResult.pid ? `PID: ${spawnResult.pid}` : '')
-      }
-
-      // 启动后等待片刻确认是否已运行
-      try {
-        await new Promise(r => setTimeout(r, 1200))
-        const ps = await this.checkCursorProcess()
-        if (!ps.running) {
-          console.warn('⚠️ 启动后未检测到 Cursor 进程，尝试兜底启动...')
-          const fb = await this.startCursorFallback()
-          const ok = !!fb.success
+          // 浏览器环境模拟
           return {
-            success: ok,
-            message: ok ? 'Cursor started by fallback' : (fb.error || 'Fallback start failed')
+            success: true,
+            message: 'Browser mode: simulated Cursor start'
           }
-        }
-      } catch {}
+        default:
+          return {
+            success: false,
+            error: `Unsupported platform: ${this.platform}`
+          }
+      }
 
+      // 使用异步命令执行启动应用程序
+      console.log('🔧 执行启动命令:', command)
+      const execResult = await api.execCommandAsync(command)
+      
+      if (!execResult.success) {
+        console.warn('⚠️ 启动命令执行失败:', execResult.error)
+      } else {
+        console.log('✅ 启动命令已下发', execResult.pid ? `PID: ${execResult.pid}` : '')
+      }
+
+      // 不再等待与校验，交由上层流程或用户手动确认
       return {
-        success: !!spawnResult.success,
-        message: spawnResult.success ? 'Cursor start command executed' : (spawnResult.error || 'Failed to start Cursor')
+        success: execResult.success,
+        message: execResult.success ? 'Cursor start command executed' : 'Failed to execute Cursor start command'
       }
     } catch (error) {
       return {
