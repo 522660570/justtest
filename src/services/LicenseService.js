@@ -4,7 +4,8 @@
  */
 
 import DeviceService from './DeviceService.js'
-import { API_CONFIG, getApiUrl } from '../config/api.js'
+import VersionService from './VersionService.js'
+import { API_CONFIG, getApiUrl, APP_VERSION, MIN_REQUIRED_VERSION, versionHeaders } from '../config/api.js'
 
 class LicenseService {
   constructor() {
@@ -20,6 +21,14 @@ class LicenseService {
   async validateLicense(licenseCode) {
     try {
       console.log('🔧 验证授权码:', licenseCode)
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          data: null,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
       
       // 获取真实的设备MAC地址
       const macAddress = await this.deviceService.getMacAddress()
@@ -28,9 +37,7 @@ class LicenseService {
       // 调用后端API
       const response = await fetch(`${this.apiBaseUrl}/getInfoByCode/${licenseCode}/${macAddress}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: versionHeaders({ 'Content-Type': 'application/json' })
       })
       
       if (!response.ok) {

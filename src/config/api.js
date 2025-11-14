@@ -18,6 +18,12 @@ export const API_CONFIG = {
   RETRY_DELAY: 1000
 }
 
+// 当前应用版本号（由 Vite 注入）
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'
+
+// 最低允许访问后端的版本
+export const MIN_REQUIRED_VERSION = '1.4.5'
+
 /**
  * 获取完整的 API URL
  * @param {string} endpoint - API 端点路径（例如：'/getSystemNotices'）
@@ -27,6 +33,16 @@ export function getApiUrl(endpoint) {
   // 确保 endpoint 以 / 开头
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
   return `${API_CONFIG.BASE_URL}${normalizedEndpoint}`
+}
+
+/**
+ * 统一的版本请求头
+ */
+export function versionHeaders(extra = {}) {
+  return {
+    'X-App-Version': APP_VERSION,
+    ...extra
+  }
 }
 
 /**
@@ -60,9 +76,12 @@ export function getSystemNoticesUrl() {
 
 export default {
   API_CONFIG,
+  APP_VERSION,
+  MIN_REQUIRED_VERSION,
   getApiUrl,
   getValidateLicenseUrl,
   getAccountByCodeUrl,
-  getSystemNoticesUrl
+  getSystemNoticesUrl,
+  versionHeaders
 }
 

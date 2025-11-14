@@ -284,7 +284,7 @@ import VersionService from './services/VersionService'
 import CustomTitleBar from './components/CustomTitleBar.vue'
 import MachineIdDebug from './components/MachineIdDebug.vue'
 import { getDefaultPurchaseUrl, getPurchaseMessage } from './config/purchase.js'
-import { API_CONFIG, getApiUrl } from './config/api.js'
+import { API_CONFIG, getApiUrl, APP_VERSION, MIN_REQUIRED_VERSION, versionHeaders } from './config/api.js'
 
 export default {
   name: 'App',
@@ -665,13 +665,18 @@ export default {
         console.log('🔧 步骤1: 正在从服务器获取新账号...')
         const macAddress = await deviceService.getMacAddress()
         console.log('🔧 设备MAC地址:', macAddress)
+        // 版本拦截：低于最小版本不允许请求后端
+        const _vs = new VersionService()
+        if (_vs.compareVersions(appVersion.value, MIN_REQUIRED_VERSION) < 0) {
+          ElMessage.error(`当前版本过低（${appVersion.value}），请更新到≥${MIN_REQUIRED_VERSION} 后再试`)
+          return
+        }
+
         const apiUrl = `${API_CONFIG.BASE_URL}/getAccountByCode/${licenseCode.value}/${macAddress}/${encodeURIComponent(currentEmail)}`
-        
+
         const response = await fetch(apiUrl, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers: versionHeaders({ 'Content-Type': 'application/json' })
         })
         
         if (!response.ok) {
@@ -897,9 +902,7 @@ export default {
         
         const response = await fetch(getApiUrl('/getSystemNotices'), {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers: versionHeaders({ 'Content-Type': 'application/json' })
         })
         
         if (!response.ok) {

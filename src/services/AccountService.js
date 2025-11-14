@@ -4,7 +4,8 @@
  */
 
 import DeviceService from './DeviceService.js'
-import { API_CONFIG, getApiUrl } from '../config/api.js'
+import VersionService from './VersionService.js'
+import { API_CONFIG, getApiUrl, APP_VERSION, MIN_REQUIRED_VERSION, versionHeaders } from '../config/api.js'
 
 class AccountService {
   constructor() {
@@ -20,19 +21,25 @@ class AccountService {
    */
   async getAccountByCode(licenseCode, currentAccountEmail = 'no-current-account') {
     try {
-      console.log('🔧 获取新账号:', { licenseCode, currentAccountEmail })
+      console.log(' 获取新账号:', { licenseCode, currentAccountEmail })
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          data: null,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
       
       // 获取真实的设备MAC地址
       const macAddress = await this.deviceService.getMacAddress()
-      console.log('🔧 设备MAC地址:', macAddress)
+      console.log(' 设备MAC地址:', macAddress)
       
       // 调用后端API
       const apiUrl = `${this.apiBaseUrl}/getAccountByCode/${licenseCode}/${macAddress}/${encodeURIComponent(currentAccountEmail)}`
       const response = await fetch(apiUrl, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: versionHeaders({ 'Content-Type': 'application/json' })
       })
       
       if (!response.ok) {
@@ -55,7 +62,7 @@ class AccountService {
       }
       
     } catch (error) {
-      console.error('❌ 获取账号失败:', error)
+      console.error(' 获取账号失败:', error)
       return {
         success: false,
         data: null,
@@ -71,13 +78,19 @@ class AccountService {
    */
   async getAccountsByLicense(licenseCode) {
     try {
-      console.log('🔧 查询授权码占用的账号:', licenseCode)
+      console.log(' 查询授权码占用的账号:', licenseCode)
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          data: null,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
       
       const response = await fetch(`${this.apiBaseUrl}/getAccountsByLicense/${licenseCode}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: versionHeaders({ 'Content-Type': 'application/json' })
       })
       
       if (!response.ok) {
@@ -99,7 +112,7 @@ class AccountService {
       }
       
     } catch (error) {
-      console.error('❌ 查询授权码占用账号失败:', error)
+      console.error(' 查询授权码占用账号失败:', error)
       return {
         success: false,
         data: null,
@@ -114,13 +127,19 @@ class AccountService {
    */
   async getAccountUsageStats() {
     try {
-      console.log('🔧 获取账号使用统计')
+      console.log(' 获取账号使用统计')
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          data: null,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
       
       const response = await fetch(`${this.apiBaseUrl}/getAccountUsageStats`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: versionHeaders({ 'Content-Type': 'application/json' })
       })
       
       if (!response.ok) {
@@ -142,7 +161,7 @@ class AccountService {
       }
       
     } catch (error) {
-      console.error('❌ 获取账号使用统计失败:', error)
+      console.error(' 获取账号使用统计失败:', error)
       return {
         success: false,
         data: null,
@@ -158,13 +177,19 @@ class AccountService {
    */
   async releaseAccountsByLicense(licenseCode) {
     try {
-      console.log('🔧 释放授权码占用的账号:', licenseCode)
+      console.log(' 释放授权码占用的账号:', licenseCode)
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          data: null,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
       
       const response = await fetch(`${this.apiBaseUrl}/releaseAccountsByLicense/${licenseCode}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: versionHeaders({ 'Content-Type': 'application/json' })
       })
       
       if (!response.ok) {
