@@ -645,6 +645,18 @@ export default {
         loading.operations = true
         console.log('🔧 开始执行Pro续期流程')
 
+        // 0. 环境检查：不满足条件时直接拦截，避免浪费账号
+        console.log('🔍 正在检查环境是否允许换号/续杯...')
+        const envCheck = await cursorService.checkEnvironmentForRenewal()
+        if (!envCheck.success) {
+          const reasons = envCheck.reasons || []
+          const reasonText = reasons.length > 0 ? reasons.join('；') : '未知原因'
+          ElMessage.error(`当前环境不允许换号：${reasonText}`)
+          console.warn('❌ 环境检查未通过，终止续杯流程。详情:', envCheck)
+          return
+        }
+        console.log('✅ 环境检查通过，可以安全执行续杯流程')
+
         // 1. 获取当前账号信息（用于传递给后端）
         const currentAccountInfo = await cursorService.getCurrentAccountInfo()
         const currentEmail = currentAccountInfo.data?.email || 'no-current-account'
@@ -727,12 +739,31 @@ export default {
         const startResult = await cursorService.startCursor()
         if (startResult.success) {
           console.log('✅ Cursor启动命令已执行')
-          ElMessage.success('✅ 续杯完成，已启动 Cursor')
         } else {
           console.warn('⚠️ Cursor启动可能失败:', startResult.error)
           ElMessage.warning('⚠️ 启动命令可能失败，请手动检查 Cursor')
         }
-        // 不再等待与校验，交由用户在 Cursor 中直接体验
+        setTimeout(async () => {
+          try {
+            const ps = await cursorService.checkCursorProcess()
+            if (!ps.running) {
+              const fb = await cursorService.startCursorFallback()
+              if (!fb.success) {
+                ElMessage.warning('⚠️ 无法自动启动 Cursor，请手动启动')
+              }
+            }
+          } catch {}
+        }, 1500)
+        setTimeout(async () => {
+          try {
+            if (window.electronAPI && window.electronAPI.getCursorVersion) {
+              const r = await window.electronAPI.getCursorVersion()
+              if (r && r.success && r.version) {
+                cursorEditorVersion.value = r.version
+              }
+            }
+          } catch {}
+        }, 3000)
 
         console.log('✅ Pro续期流程执行完成')
         

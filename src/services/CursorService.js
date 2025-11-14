@@ -276,6 +276,7 @@ class CursorService {
       let command
       switch (this.platform) {
         case 'win32':
+          // Windows: 温和地关闭Cursor进程，避免确认弹框
           command = 'tasklist /FI "IMAGENAME eq Cursor.exe" /FO CSV /NH'
           break
         case 'darwin':
@@ -306,16 +307,19 @@ class CursorService {
       const output = result.stdout ? result.stdout.trim() : ''
       
       if (this.platform === 'win32') {
-        // Windows tasklist 输出格式：
-        // - 找到进程：'"Cursor.exe","12345","Console","1","123,456 K"'
-        // - 未找到：'INFO: No tasks are running which match the specified criteria.'
-        // 或者 taskkill 的错误输出也可能被捕获
+        // Windows tasklist 输出：
+        // - 找到：CSV 行包含 Cursor.exe
+        // - 未找到：提示文本（本地化），因此不能仅依赖英文串
+        isRunning = /"Cursor\.exe"/i.test(output)
         
-        // 只有当输出包含 .exe 且是 CSV 格式时才认为进程存在
-        isRunning = output.includes('Cursor.exe') && 
-                   output.includes('"') && 
-                   !output.toLowerCase().includes('no tasks') &&
-                   !output.toLowerCase().includes('not found')
+        // 备用：使用 PowerShell 再次确认
+        if (!isRunning) {
+          const ps = await api.execCommand('powershell "(Get-Process -Name Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Id) 2>$null"')
+          const psOut = (ps.stdout || '').trim()
+          if (/^\d+$/.test(psOut)) {
+            isRunning = true
+          }
+        }
       } else {
         // macOS/Linux: pgrep 找到进程时会输出PID（纯数字）
         // 没找到时没有输出（或退出码非0）
@@ -444,45 +448,71 @@ class CursorService {
     await this.initialize()
     
     try {
-      let command
+      // 启动前先确保可执行文件路径有效，不存在则尝试重新查找
+      let exePath = this.cursorPaths.executable
+      let exists = false
+      try {
+        exists = await api.fsAccess(exePath)
+      } catch (_) {
+        exists = false
+      }
+
+      if (!exists) {
+        console.warn('⚠️ 当前可执行文件不存在，尝试重新查找:', exePath)
+        const found = await this.findCursorExecutable()
+        if (found) {
+          this.cursorPaths.executable = found
+          exePath = found
+          console.log('✅ 已更新可执行文件路径:', exePath)
+        } else {
+          return { success: false, error: '未找到 Cursor 可执行文件，请确认已安装 Cursor' }
+        }
+      }
+
+      // 根据平台以最稳妥的方式启动
+      let spawnResult
       switch (this.platform) {
         case 'win32':
-          // 使用 start 即发即走，避免阻塞和前台卡顿
-          command = `start "" "${this.cursorPaths.executable}"`
+          // 直接以 detached 方式启动 exe，避免 cmd/start 对空格路径的各种问题
+          spawnResult = await api.spawnDetached(exePath, [])
           break
         case 'darwin':
-          command = `open "${this.cursorPaths.executable}"`
+          // 使用 open 打开应用
+          spawnResult = await api.spawnDetached('open', [exePath])
           break
         case 'linux':
-          command = this.cursorPaths.executable
+          spawnResult = await api.spawnDetached(exePath, [])
           break
         case 'browser':
-          // 浏览器环境模拟
-          return {
-            success: true,
-            message: 'Browser mode: simulated Cursor start'
-          }
+          return { success: true, message: 'Browser mode: simulated Cursor start' }
         default:
-          return {
-            success: false,
-            error: `Unsupported platform: ${this.platform}`
-          }
+          return { success: false, error: `Unsupported platform: ${this.platform}` }
       }
 
-      // 使用异步命令执行启动应用程序
-      console.log('🔧 执行启动命令:', command)
-      const execResult = await api.execCommandAsync(command)
-      
-      if (!execResult.success) {
-        console.warn('⚠️ 启动命令执行失败:', execResult.error)
+      if (!spawnResult.success) {
+        console.warn('⚠️ 启动可能失败:', spawnResult.error)
       } else {
-        console.log('✅ 启动命令已下发', execResult.pid ? `PID: ${execResult.pid}` : '')
+        console.log('✅ 启动命令已下发', spawnResult.pid ? `PID: ${spawnResult.pid}` : '')
       }
 
-      // 不再等待与校验，交由上层流程或用户手动确认
+      // 启动后等待片刻确认是否已运行
+      try {
+        await new Promise(r => setTimeout(r, 1200))
+        const ps = await this.checkCursorProcess()
+        if (!ps.running) {
+          console.warn('⚠️ 启动后未检测到 Cursor 进程，尝试兜底启动...')
+          const fb = await this.startCursorFallback()
+          const ok = !!fb.success
+          return {
+            success: ok,
+            message: ok ? 'Cursor started by fallback' : (fb.error || 'Fallback start failed')
+          }
+        }
+      } catch {}
+
       return {
-        success: execResult.success,
-        message: execResult.success ? 'Cursor start command executed' : 'Failed to execute Cursor start command'
+        success: !!spawnResult.success,
+        message: spawnResult.success ? 'Cursor start command executed' : (spawnResult.error || 'Failed to start Cursor')
       }
     } catch (error) {
       return {
@@ -655,6 +685,78 @@ class CursorService {
       return {
         success: false,
         error: error.message
+      }
+    }
+  }
+
+  /**
+   * 检查当前环境是否满足换号/续杯操作的前置条件
+   * 不满足时返回详细原因列表，用于在前端直接提示用户
+   */
+  async checkEnvironmentForRenewal() {
+    await this.initialize()
+
+    const reasons = []
+
+    // 1. 必须在 Electron 环境中运行，才能访问本地文件和进程
+    if (!isElectron) {
+      reasons.push('当前不在桌面客户端环境，无法访问本地 Cursor 文件')
+    }
+
+    // 2. 检查 SQLite 数据库文件是否存在且可访问
+    let sqliteOk = false
+    try {
+      const exists = await api.fsAccess(this.cursorPaths.sqlite)
+      if (!exists) {
+        reasons.push('未检测到 Cursor 数据库文件，请先打开一次 Cursor 并登录账号')
+      } else {
+        sqliteOk = true
+      }
+    } catch (error) {
+      reasons.push('无法访问 Cursor 数据库文件: ' + (error.message || String(error)))
+    }
+
+    // 3. 检查 storage.json（可选，但提供更友好的提示）
+    try {
+      const storageExists = await api.fsAccess(this.cursorPaths.storage)
+      if (!storageExists) {
+        reasons.push('未找到 storage.json，可能 Cursor 尚未完整初始化（建议先正常使用一次 Cursor）')
+      }
+    } catch (error) {
+      reasons.push('无法访问 storage.json 文件: ' + (error.message || String(error)))
+    }
+
+    // 4. 检查 machineId 文件（如果不存在不一定阻断，仅提示）
+    try {
+      const machineIdExists = await api.fsAccess(this.cursorPaths.machineId)
+      if (!machineIdExists) {
+        reasons.push('未找到 machineId 文件，将在重置时创建新文件（如首次使用可忽略）')
+      }
+    } catch (error) {
+      reasons.push('无法访问 machineId 文件: ' + (error.message || String(error)))
+    }
+
+    // 5. 检查 Cursor 可执行文件是否存在，避免启动时弹出系统错误框
+    let exeOk = false
+    try {
+      const exeExists = await api.fsAccess(this.cursorPaths.executable)
+      if (!exeExists) {
+        reasons.push(`未找到 Cursor 可执行文件，当前尝试路径: ${this.cursorPaths.executable}`)
+      } else {
+        exeOk = true
+      }
+    } catch (error) {
+      reasons.push('无法访问 Cursor 可执行文件路径: ' + (error.message || String(error)))
+    }
+
+    const success = isElectron && sqliteOk && exeOk
+
+    return {
+      success,
+      reasons,
+      details: {
+        platform: this.platform,
+        paths: this.cursorPaths
       }
     }
   }
@@ -1157,14 +1259,34 @@ class CursorService {
       // 🔑 支持两种模式：
       // 1) 完整令牌模式：accessToken(+refreshToken)
       // 2) SessionToken 模式：仅 email+sessionToken（写入 WorkosCursorSessionToken）
-      const finalAccessToken = accountData.accessToken
-      const finalRefreshToken = accountData.refreshToken
+      let finalAccessToken = accountData.accessToken
+      let finalRefreshToken = accountData.refreshToken
 
       if (!accountData.email || !accountData.email.trim()) {
         throw new Error('后端返回的 email 为空')
       }
 
-      const usingSessionOnly = !finalAccessToken && !!accountData.sessionToken
+      let usingSessionOnly = !finalAccessToken && !!accountData.sessionToken
+
+      // 如果当前仅有 sessionToken，并且在 Electron 环境中，尝试通过官方接口交换真实 accessToken
+      if (usingSessionOnly && isElectron && accountData.sessionToken && window.electronAPI && window.electronAPI.exchangeSessionTokenForAccessToken) {
+        try {
+          console.log('🔑 检测到 SessionToken，尝试通过官方接口交换 AccessToken...')
+          const exchangeResult = await window.electronAPI.exchangeSessionTokenForAccessToken(accountData.sessionToken)
+          console.log('🔑 SessionToken 交换结果:', exchangeResult)
+
+          if (exchangeResult && exchangeResult.success && exchangeResult.accessToken) {
+            finalAccessToken = exchangeResult.accessToken
+            finalRefreshToken = exchangeResult.refreshToken || exchangeResult.accessToken
+            usingSessionOnly = false
+            console.log('✅ 成功通过官方接口获取到 AccessToken，将使用完整令牌模式写入 SQLite')
+          } else {
+            console.warn('⚠️ 官方接口未返回有效 AccessToken，继续使用 SessionToken 模式')
+          }
+        } catch (e) {
+          console.warn('⚠️ 调用官方接口交换 AccessToken 失败，将退回 SessionToken 模式:', e?.message || e)
+        }
+      }
 
       if (!usingSessionOnly) {
         if (!finalAccessToken || !finalAccessToken.trim()) {
@@ -1181,14 +1303,15 @@ class CursorService {
       }
       console.log('📧 email:', accountData.email)
       console.log('🔐 signUpType:', accountData.signUpType || 'Auth0')
-      
+
       // 准备更新的字段（参考 cursor-free-vip-main 的实现）
       // ⚠️ 关键：signUpType 可能需要使用 "Auth_0" (带下划线) 而不是 "Auth0"
       const signUpType = accountData.signUpType === 'Auth0' ? 'Auth_0' : accountData.signUpType
       
       const updates = [
         ['cursorAuth/cachedSignUpType', signUpType || 'Auth_0'],
-        ['cursorAuth/cachedEmail', accountData.email]
+        ['cursorAuth/cachedEmail', accountData.email],
+        ['cursorAuth/isAuthenticated', 'true']
       ]
 
       if (usingSessionOnly) {
@@ -1285,6 +1408,7 @@ class CursorService {
         'cursorAuth/cachedSignUpType',
         'cursorAuth/accessToken',
         'cursorAuth/refreshToken',
+        'cursorAuth/isAuthenticated',
         'WorkosCursorSessionToken'
       ]
 
@@ -1297,7 +1421,7 @@ class CursorService {
 
       // 数据库连接由IPC处理程序自动管理
       
-      const hasAccessToken = !!authData['cursorAuth/accessToken']
+      const hasAccessToken = !!authData['cursorAuth/accessToken'] || !!authData['WorkosCursorSessionToken']
       const hasSessionToken = !!authData['WorkosCursorSessionToken']
       
       const accountInfo = {
@@ -1307,7 +1431,7 @@ class CursorService {
         hasRefreshToken: !!authData['cursorAuth/refreshToken'],
         hasSessionToken: hasSessionToken,
         // 🔑 认证判断：有 sessionToken 或 accessToken 且有 email 就算认证成功
-        isAuthenticated: !!authData['cursorAuth/cachedEmail'] && (hasAccessToken || hasSessionToken)
+        isAuthenticated: !!authData['cursorAuth/cachedEmail'] && hasAccessToken
       }
 
       console.log('📊 当前账号信息 (从SQLite读取):', accountInfo)

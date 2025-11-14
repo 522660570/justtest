@@ -4,6 +4,8 @@ const fs = require('fs').promises
 const os = require('os')
 const { exec } = require('child_process')
 const { promisify } = require('util')
+const crypto = require('crypto')
+const https = require('https')
 const execAsync = promisify(exec)
 const isDev = process.env.NODE_ENV === 'development'
 
@@ -437,6 +439,129 @@ app.whenReady().then(async () => {
   }
 })
 
+// 使用官方 Web 接口将 WorkosCursorSessionToken 交换为 accessToken / refreshToken
+ipcMain.handle('exchange-session-token-for-access-token', async (event, sessionToken) => {
+  if (!sessionToken || typeof sessionToken !== 'string') {
+    return { success: false, error: 'Invalid sessionToken' }
+  }
+
+  // 辅助：Base64URL 编码
+  const base64UrlEncode = (buffer) => {
+    return buffer.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  }
+
+  // 辅助：HTTP(S) 请求封装
+  const httpRequest = (options, body) => {
+    return new Promise((resolve, reject) => {
+      const req = https.request(options, (res) => {
+        let data = ''
+        res.on('data', (chunk) => { data += chunk })
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode, statusMessage: res.statusMessage, body: data })
+        })
+      })
+
+      req.on('error', (err) => reject(err))
+
+      if (body) {
+        req.write(body)
+      }
+      req.end()
+    })
+  }
+
+  try {
+    writeLog('INFO', '开始通过官方接口交换 accessToken (loginDeepCallbackControl + auth/poll)')
+
+    // 1. 生成 PKCE 参数
+    const verifierBytes = crypto.randomBytes(32)
+    const verifier = base64UrlEncode(verifierBytes)
+    const challenge = base64UrlEncode(crypto.createHash('sha256').update(verifier).digest())
+    const uuid = crypto.randomUUID()
+
+    writeLog('INFO', `生成 PKCE 参数: uuid=${uuid}`)
+
+    // 2. 调用 loginDeepCallbackControl，携带 WorkosCursorSessionToken Cookie
+    const loginBody = JSON.stringify({ challenge, uuid })
+    const loginOptions = {
+      hostname: 'cursor.com',
+      port: 443,
+      path: '/api/auth/loginDeepCallbackControl',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': '*/*',
+        'Origin': 'https://cursor.com',
+        'Cookie': `WorkosCursorSessionToken=${sessionToken}`
+      }
+    }
+
+    writeLog('INFO', '调用 loginDeepCallbackControl 开始授权会话')
+    const loginResp = await httpRequest(loginOptions, loginBody)
+
+    if (loginResp.statusCode < 200 || loginResp.statusCode >= 300) {
+      writeLog('ERROR', `loginDeepCallbackControl 失败: ${loginResp.statusCode} ${loginResp.statusMessage}`)
+      return { success: false, error: `loginDeepCallbackControl failed: ${loginResp.statusCode} ${loginResp.statusMessage}` }
+    }
+
+    writeLog('INFO', 'loginDeepCallbackControl 调用成功，开始轮询 auth/poll 获取 AccessToken')
+
+    // 3. 轮询 auth/poll 获取 accessToken
+    const maxAttempts = 30
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        writeLog('INFO', `auth/poll 尝试 ${attempt}/${maxAttempts} (uuid=${uuid})`)
+
+        const pollPath = `/auth/poll?uuid=${encodeURIComponent(uuid)}&verifier=${encodeURIComponent(verifier)}`
+        const pollOptions = {
+          hostname: 'api2.cursor.sh',
+          port: 443,
+          path: pollPath,
+          method: 'GET',
+          headers: {
+            'Accept': '*/*',
+            'Origin': 'https://cursor.com'
+          }
+        }
+
+        const pollResp = await httpRequest(pollOptions)
+        if (pollResp.statusCode >= 200 && pollResp.statusCode < 300) {
+          let data
+          try {
+            data = JSON.parse(pollResp.body || '{}')
+          } catch (e) {
+            writeLog('WARN', `auth/poll 返回非 JSON 数据: ${pollResp.body?.substring(0, 200) || ''}`)
+            data = null
+          }
+
+          if (data && data.accessToken) {
+            writeLog('INFO', '成功从 auth/poll 获取 AccessToken')
+            return {
+              success: true,
+              accessToken: data.accessToken,
+              refreshToken: data.refreshToken || null,
+              raw: data
+            }
+          }
+        }
+
+        await delay(1000)
+      } catch (pollErr) {
+        writeLog('WARN', `auth/poll 尝试 ${attempt} 失败: ${pollErr.message}`)
+        await delay(1000)
+      }
+    }
+
+    writeLog('ERROR', 'auth/poll 轮询超时，未能获取 AccessToken')
+    return { success: false, error: 'Timeout while polling auth/poll for accessToken' }
+  } catch (error) {
+    writeLog('ERROR', 'exchange-session-token-for-access-token 调用失败', error)
+    return { success: false, error: error.message }
+  }
+})
+
 // 当所有窗口都被关闭时退出应用
 app.on('window-all-closed', () => {
   // 在macOS上，除非用户用Cmd + Q确定地退出，
@@ -859,17 +984,24 @@ ipcMain.handle('spawn-detached', async (event, command, args = []) => {
   try {
     const { spawn } = require('child_process')
     
-    console.log('🚀 启动命令:', command, args)
+    console.log(' 启动命令:', command, args)
     
     let child
     if (process.platform === 'win32') {
-      // Windows特殊处理：直接启动exe文件
-      child = spawn(command, args, {
+      // Windows特殊处理：直接启动exe文件，并将工作目录设置为exe所在目录
+      const path = require('path')
+      let options = {
         detached: true,
         stdio: 'ignore',
-        shell: false,  // Windows上不使用shell
-        windowsHide: false  // 显示窗口
-      })
+        shell: false,
+        windowsHide: false
+      }
+      try {
+        if (typeof command === 'string' && /\\|\//.test(command) && command.toLowerCase().endsWith('.exe')) {
+          options.cwd = path.dirname(command)
+        }
+      } catch {}
+      child = spawn(command, args, options)
     } else {
       // macOS和Linux
       child = spawn(command, args, {
@@ -942,24 +1074,22 @@ ipcMain.handle('find-cursor-executable', async () => {
       console.log('⚠️ 无法通过注册表查找Cursor')
     }
     
-    // 方法3: 在常见安装位置搜索
+    // 方法3: 在常见安装位置搜索（使用环境变量更可靠）
+    const homeDir = os.homedir()
+    const localAppData = process.env.LOCALAPPDATA || (homeDir ? `${homeDir}\\AppData\\Local` : '')
+    const programFiles = process.env['ProgramFiles'] || 'C:/Program Files'
+    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)'
+
     const commonPaths = [
-      'C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Cursor\\Cursor.exe',
-      'C:\\Program Files\\Cursor\\Cursor.exe',
-      'C:\\Program Files (x86)\\Cursor\\Cursor.exe',
+      `${localAppData}\\Programs\\Cursor\\Cursor.exe`,
+      `${programFiles}\\Cursor\\Cursor.exe`,
+      `${programFilesX86}\\Cursor\\Cursor.exe`,
       'D:\\Cursor\\Cursor.exe',
       'E:\\Cursor\\Cursor.exe',
       'F:\\Cursor\\Cursor.exe'
     ]
-    
-    const homeDir = os.homedir()
-    const username = process.env.USERNAME || process.env.USER || 'User'
-    
-    for (let commonPath of commonPaths) {
-      // 展开环境变量
-      commonPath = commonPath.replace('%USERNAME%', username)
-      commonPath = commonPath.replace('~', homeDir)
-      
+
+    for (const commonPath of commonPaths) {
       try {
         await fs.access(commonPath)
         console.log('✅ 在常见位置找到Cursor路径:', commonPath)
@@ -969,7 +1099,22 @@ ipcMain.handle('find-cursor-executable', async () => {
       }
     }
     
-    // 方法4: 在整个系统中搜索 Cursor.exe
+    // 方法4: where 查找 PATH 中的 Cursor.exe
+    try {
+      const whereRes = await execAsync('where Cursor.exe', { timeout: 5000 })
+      const lines = whereRes.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+      for (const p of lines) {
+        try {
+          await fs.access(p)
+          console.log('✅ 通过 where 找到Cursor路径:', p)
+          return { success: true, path: p, method: 'where' }
+        } catch {}
+      }
+    } catch (e) {
+      // 继续使用全盘搜索
+    }
+
+    // 方法5: 在整个系统中搜索 Cursor.exe（最慢，兜底）
     try {
       const searchResult = await execAsync('powershell "Get-ChildItem -Path C:\\ -Recurse -Name \'Cursor.exe\' -ErrorAction SilentlyContinue | Select-Object -First 3"', { timeout: 15000 })
       const searchPaths = searchResult.stdout.split('\n').filter(p => p.trim())
@@ -1160,7 +1305,6 @@ ipcMain.handle('clear-log-file', async () => {
   }
 })
 
-// 获取 Cursor 版本号
 ipcMain.handle('get-cursor-version', async () => {
   try {
     console.log('🔍 正在获取 Cursor 版本号...')
@@ -1221,20 +1365,73 @@ ipcMain.handle('get-cursor-version', async () => {
       console.log('⚠️ 文件方式失败:', fileError.message)
     }
     
-    // 方法3: 通过注册表获取版本信息 (Windows)
+    // 方法2b: 当进程未运行时，复用可执行文件定位逻辑后读取 package.json/product.json
     if (process.platform === 'win32') {
       try {
-        const regResult = await execAsync('reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"', { timeout: 5000 })
-        const lines = regResult.stdout.split('\n')
-        for (const line of lines) {
-          if (line.includes('DisplayVersion')) {
-            const match = line.match(/REG_SZ\s+(.+)/)
-            if (match) {
-              const version = match[1].trim()
-              console.log('✅ 通过注册表获取 Cursor 版本:', version)
-              return { success: true, version, method: 'registry' }
-            }
+        const homeDir = os.homedir()
+        const localAppData = process.env.LOCALAPPDATA || (homeDir ? `${homeDir}\\AppData\\Local` : '')
+        const programFiles = process.env['ProgramFiles'] || 'C:/Program Files'
+        const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)'
+        const tryPaths = [
+          `${localAppData}\\Programs\\Cursor\\Cursor.exe`,
+          `${programFiles}\\Cursor\\Cursor.exe`,
+          `${programFilesX86}\\Cursor\\Cursor.exe`
+        ]
+        let exeFound = null
+        for (const p of tryPaths) {
+          try { await fs.access(p); exeFound = p; break } catch {}
+        }
+        if (!exeFound) {
+          try {
+            const whereRes = await execAsync('where Cursor.exe', { timeout: 5000 })
+            const lines = whereRes.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+            for (const p of lines) { try { await fs.access(p); exeFound = p; break } catch {} }
+          } catch {}
+        }
+        if (exeFound) {
+          const exeDir = path.dirname(exeFound)
+          const pkgCandidates = [
+            path.join(exeDir, 'resources', 'app', 'package.json'),
+            path.join(exeDir, 'resources', 'app', 'product.json'),
+            path.join(exeDir, 'resources', 'package.json')
+          ]
+          for (const pkg of pkgCandidates) {
+            try {
+              const data = await fs.readFile(pkg, 'utf8')
+              const json = JSON.parse(data)
+              if (json.version) {
+                console.log('✅ 通过已定位的安装目录读取版本:', json.version)
+                return { success: true, version: json.version, method: 'package.json (resolved exe)' }
+              }
+            } catch {}
           }
+        }
+      } catch {}
+    }
+
+    // 方法3: 通过注册表获取版本信息 (Windows) - 扩展到 HKLM 与 Wow6432Node
+    if (process.platform === 'win32') {
+      try {
+        const regQueries = [
+          'reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"',
+          'reg query "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"',
+          'reg query "HKEY_LOCAL_MACHINE\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayVersion"'
+        ]
+        for (const q of regQueries) {
+          try {
+            const regResult = await execAsync(q, { timeout: 6000 })
+            const lines = regResult.stdout.split('\n')
+            for (const line of lines) {
+              if (line.includes('DisplayVersion')) {
+                const match = line.match(/REG_SZ\s+(.+)/)
+                if (match) {
+                  const version = match[1].trim()
+                  console.log('✅ 通过注册表获取 Cursor 版本:', version)
+                  return { success: true, version, method: 'registry' }
+                }
+              }
+            }
+          } catch {}
         }
       } catch (regError) {
         console.log('⚠️ 注册表方式失败:', regError.message)

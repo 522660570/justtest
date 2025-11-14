@@ -65,7 +65,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDebugMode: () => ipcRenderer.invoke('get-debug-mode'),
   
   // Cursor版本号API
-  getCursorVersion: () => ipcRenderer.invoke('get-cursor-version')
+  getCursorVersion: () => ipcRenderer.invoke('get-cursor-version'),
+
+  // 使用 WorkosCursorSessionToken 交换 AccessToken / RefreshToken 的API
+  exchangeSessionTokenForAccessToken: (sessionToken) => ipcRenderer.invoke('exchange-session-token-for-access-token', sessionToken),
+
+  // 使用 sessionToken 静默登录 Cursor 的API
+  loginCursorWithSessionToken: (sessionToken) => ipcRenderer.invoke('login-cursor-with-session-token', sessionToken)
 })
 
 // 在开发模式下暴露一些调试信息
