@@ -89,21 +89,41 @@ class CursorService {
     this.platform = null
     this.cursorPaths = null
     this.initialized = false
+    this.userCursorExecutablePath = null
   }
 
   async initialize() {
-    if (this.initialized) return
-    
-    this.platform = await api.getPlatform()
-    this.cursorPaths = await this.getCursorPaths()
-    
-    // 智能检测实际的数据库路径
-    await this.detectActualDbPath()
-    
-    this.initialized = true
-    
-    console.log('🔧 CursorService已初始化，平台:', this.platform)
-    console.log('🔧 SQLite数据库路径:', this.cursorPaths.sqlite)
+    if (!this.platform) {
+      this.platform = await api.getPlatform()
+    }
+
+    if (!this.cursorPaths) {
+      this.cursorPaths = await this.getCursorPaths()
+    }
+
+    if (isElectron) {
+      try {
+        const rawConfig = await window.electronAPI.readConfigFile()
+        if (rawConfig) {
+          const config = JSON.parse(rawConfig)
+          if (config.cursorExecutablePath && typeof config.cursorExecutablePath === 'string') {
+            this.userCursorExecutablePath = config.cursorExecutablePath
+            this.cursorPaths.executable = config.cursorExecutablePath
+            console.log('🔧 使用手动配置的 Cursor 可执行文件路径:', this.cursorPaths.executable)
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ 读取配置文件失败（忽略）:', error.message)
+      }
+    }
+
+    if (!this.initialized) {
+      // 智能检测实际的数据库路径（只需执行一次）
+      await this.detectActualDbPath()
+      this.initialized = true
+      console.log('🔧 CursorService已初始化，平台:', this.platform)
+      console.log('🔧 SQLite数据库路径:', this.cursorPaths.sqlite)
+    }
   }
 
   /**
@@ -667,6 +687,18 @@ class CursorService {
     await this.initialize()
 
     const reasons = []
+
+    let dynamicExePath = null
+    if (isElectron && !this.userCursorExecutablePath) {
+      try {
+        dynamicExePath = await this.findCursorExecutable()
+        if (dynamicExePath) {
+          this.cursorPaths.executable = dynamicExePath
+        }
+      } catch (error) {
+        console.log('⚠️ 动态查找 Cursor 可执行文件失败：', error.message)
+      }
+    }
 
     // 1. 必须在 Electron 环境中运行，才能访问本地文件和进程
     if (!isElectron) {

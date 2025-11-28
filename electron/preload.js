@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 购买页面API
   openPurchasePage: (url) => ipcRenderer.invoke('open-purchase-page', url),
   
+  // 文件选择对话框API
+  openFileDialog: (options) => ipcRenderer.invoke('open-file-dialog', options),
+  
   // 环境检测API
   getAppEnvironment: () => ipcRenderer.invoke('get-app-environment'),
   

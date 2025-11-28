@@ -17,6 +17,62 @@
       </template>
     </el-dialog>
     
+    <!-- Cursor 路径配置对话框 -->
+    <el-dialog
+      v-model="showPathDialog"
+      title="⚙️ Cursor 路径配置"
+      width="560px"
+      :close-on-click-modal="false"
+      class="path-dialog"
+    >
+      <div class="path-config-section">
+        <div class="config-header">
+          <p class="config-desc">
+            当自动检测不到 Cursor.exe 时，可以在这里手动指定安装路径。
+          </p>
+        </div>
+        
+        <div class="current-path-display">
+          <div class="path-label">📁 当前路径</div>
+          <div class="path-value" :title="cursorExecutablePath || '未设置'">
+            {{ cursorExecutablePath || '未设置（使用自动检测）' }}
+          </div>
+        </div>
+
+        <div class="path-actions">
+          <el-button
+            type="primary"
+            size="large"
+            @click="selectCursorPath"
+            :loading="loading.pathSelection"
+            class="select-path-btn"
+          >
+            <template v-if="loading.pathSelection">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>选择中...</span>
+            </template>
+            <template v-else>
+              📂 选择 Cursor.exe 文件
+            </template>
+          </el-button>
+          <el-button
+            v-if="cursorExecutablePath"
+            size="large"
+            @click="clearCursorPath"
+            class="clear-path-btn"
+          >
+            🗑️ 清除路径
+          </el-button>
+        </div>
+
+        <div class="priority-tip">
+          <el-icon><InfoFilled /></el-icon>
+          <span>优先级：手动配置 > 运行中进程 > 自动检测</span>
+        </div>
+      </div>
+    </el-dialog>
+    
+    
     <div class="app-container">
       <!-- 主内容区域 -->
       <div class="main-content">
@@ -146,7 +202,17 @@
 
                 <div class="status-item-grid">
                   <span class="status-label-grid">Cursor版本</span>
-                  <span class="status-value cursor-version">{{ cursorEditorVersion }}</span>
+                  <div class="status-value-wrapper">
+                    <span class="status-value cursor-version">{{ cursorEditorVersion }}</span>
+                    <el-button
+                      type="warning"
+                      size="small"
+                      @click="showPathDialog = true"
+                      class="path-config-btn"
+                    >
+                      ⚙️ 路径配置
+                    </el-button>
+                  </div>
                 </div>
 
                 <div class="status-item-grid">
@@ -306,12 +372,15 @@ export default {
     const systemNotices = ref([])
     const debugMode = ref(false) // 调试模式开关
     const showDebugPanel = ref(false) // 调试面板显示状态
+    const showPathDialog = ref(false) // 路径配置对话框显示状态
+    const cursorExecutablePath = ref('') // 手动配置的 Cursor.exe 路径
     
     const loading = reactive({
       license: false,
       refresh: false,
       operations: false,
-      purchase: false
+      purchase: false,
+      pathSelection: false
     })
 
     // 当前Cursor账号状态
@@ -350,6 +419,125 @@ export default {
       })
       return result
     })
+
+    // 🔧 读取应用配置（包括手动配置的 Cursor 路径）
+    const loadAppConfig = async () => {
+      try {
+        if (typeof window === 'undefined' || !window.electronAPI || !window.electronAPI.readConfigFile) {
+          return
+        }
+        const rawConfig = await window.electronAPI.readConfigFile()
+        if (!rawConfig) {
+          return
+        }
+        let config
+        try {
+          config = JSON.parse(rawConfig)
+        } catch (error) {
+          console.warn('⚠️ 配置文件格式异常，已忽略:', error.message)
+          return
+        }
+        if (config.cursorExecutablePath && typeof config.cursorExecutablePath === 'string') {
+          cursorExecutablePath.value = config.cursorExecutablePath
+        }
+      } catch (error) {
+        console.warn('⚠️ 读取配置文件失败:', error.message)
+      }
+    }
+
+    // 🔧 选择 Cursor 路径
+    const selectCursorPath = async () => {
+      try {
+        if (!window.electronAPI || !window.electronAPI.openFileDialog) {
+          ElMessage.error('当前环境不支持文件选择')
+          return
+        }
+
+        loading.pathSelection = true
+
+        const result = await window.electronAPI.openFileDialog({
+          title: '选择 Cursor.exe 文件',
+          filters: [
+            { name: 'Cursor 可执行文件', extensions: ['exe'] },
+            { name: '快捷方式', extensions: ['lnk'] },
+            { name: '所有文件', extensions: ['*'] }
+          ],
+          buttonLabel: '选择'
+        })
+
+        if (result.success && result.filePath) {
+          // 如果选择的是快捷方式，提示用户需要选择实际的 exe 文件
+          if (result.filePath.toLowerCase().endsWith('.lnk')) {
+            ElMessage.warning('请选择 Cursor.exe 文件，而不是快捷方式')
+            return
+          }
+
+          // 验证文件是否存在
+          const exists = await window.electronAPI.fsAccess(result.filePath)
+          if (!exists) {
+            ElMessage.error('选择的文件不存在或无法访问')
+            return
+          }
+
+          // 保存到配置
+          cursorExecutablePath.value = result.filePath
+
+          let rawConfig = await window.electronAPI.readConfigFile()
+          let config = {}
+          if (rawConfig) {
+            try {
+              config = JSON.parse(rawConfig)
+            } catch (error) {
+              console.warn('⚠️ 原有配置解析失败，将重新生成配置文件:', error.message)
+              config = {}
+            }
+          }
+
+          config.cursorExecutablePath = result.filePath
+
+          await window.electronAPI.writeConfigFile(JSON.stringify(config, null, 2))
+          ElMessage.success('✅ Cursor 路径设置成功！')
+          showPathDialog.value = false
+        } else if (result.canceled) {
+          console.log('用户取消了文件选择')
+        }
+      } catch (error) {
+        console.error('❌ 选择文件失败:', error)
+        ElMessage.error('选择文件失败: ' + error.message)
+      } finally {
+        loading.pathSelection = false
+      }
+    }
+
+    // 🔧 清除 Cursor 路径
+    const clearCursorPath = async () => {
+      try {
+        if (!window.electronAPI || !window.electronAPI.writeConfigFile) {
+          ElMessage.error('当前环境不支持清除配置')
+          return
+        }
+
+        let rawConfig = await window.electronAPI.readConfigFile()
+        let config = {}
+        if (rawConfig) {
+          try {
+            config = JSON.parse(rawConfig)
+          } catch (error) {
+            config = {}
+          }
+        }
+
+        delete config.cursorExecutablePath
+        cursorExecutablePath.value = ''
+
+        await window.electronAPI.writeConfigFile(JSON.stringify(config, null, 2))
+        ElMessage.success('✅ 已清除手动配置的路径，将使用自动检测')
+        showPathDialog.value = false
+      } catch (error) {
+        console.error('❌ 清除路径失败:', error)
+        ElMessage.error('清除路径失败: ' + error.message)
+      }
+    }
 
     // 获取软件版本号（自动从 package.json 读取）
     const appVersion = ref(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.0')
@@ -1123,12 +1311,13 @@ export default {
       // 检查管理员权限
       await checkAdminRights()
       
-      // 并行加载缓存授权码、当前账号信息、系统公告和版本检查
+      // 并行加载缓存授权码、当前账号信息、系统公告、版本检查和应用配置
       await Promise.all([
         loadCachedLicense(), // 加载缓存的授权码并获取最新状态
         getCurrentAccount(), // 获取当前账号信息
         getSystemNotices(),  // 获取系统公告
-        checkForUpdates()    // 检查版本更新
+        checkForUpdates(),   // 检查版本更新
+        loadAppConfig()      // 读取应用配置（包括 Cursor 路径）
       ])
       
       console.log('🔧 应用初始化完成')
@@ -1165,6 +1354,8 @@ export default {
       cursorEditorVersion,
       debugMode,
       showDebugPanel,
+      showPathDialog,
+      cursorExecutablePath,
       
       // 🔧 计算属性
       licenseStatus,
@@ -1187,7 +1378,9 @@ export default {
       getCurrentAccount,
       loadCachedLicense,
       diagnoseCursorPaths,
-      forceRefreshUI
+      forceRefreshUI,
+      selectCursorPath,
+      clearCursorPath
     }
   }
 }
@@ -1712,11 +1905,243 @@ export default {
   color: #8c8c8c;
 }
 
+.settings-dialog :deep(.el-dialog__body) {
+  padding: 18px 20px 16px 20px;
+}
+
+.settings-section {
+  background: linear-gradient(135deg, #ffffff 0%, #f7f9ff 100%);
+  border-radius: 12px;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settings-header-text {
+  flex: 1;
+}
+
+.settings-title {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  color: #303133;
+  font-weight: 600;
+}
+
+.settings-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.6;
+}
+
+.settings-code {
+  font-family: 'Consolas', 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.settings-example {
+  font-size: 12px;
+  color: #a0a0a0;
+}
+
+.settings-priority-row {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-priority-label {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-tip {
+  font-size: 12px;
+  color: #606266;
+}
+
 /* 操作按钮区域 */
 .actions-section {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* 路径配置按钮 - 醒目样式 */
+.path-config-btn {
+  margin-left: 8px;
+  font-weight: 600;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(230, 162, 60, 0.3);
+  transition: all 0.3s ease;
+}
+
+.path-config-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.4);
+}
+
+/* 路径配置对话框样式 */
+.path-dialog :deep(.el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.path-dialog :deep(.el-dialog__header) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px 24px;
+  margin: 0;
+}
+
+.path-dialog :deep(.el-dialog__title) {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.path-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: white;
+  font-size: 20px;
+}
+
+.path-dialog :deep(.el-dialog__headerbtn:hover .el-dialog__close) {
+  color: #ffd700;
+}
+
+.path-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+.path-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.config-header .config-desc {
+  margin: 0;
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.current-path-display {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  border: 2px solid #e4e7ed;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.current-path-display .path-label {
+  font-size: 13px;
+  color: #909399;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.current-path-display .path-value {
+  font-size: 14px;
+  color: #303133;
+  font-family: 'Consolas', 'Courier New', monospace;
+  background: white;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #dcdfe6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.path-config-section .path-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.path-config-section .path-actions .el-button {
+  flex: 1;
+  height: 48px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.select-path-btn {
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+.select-path-btn:hover {
+  background: linear-gradient(135deg, #40a9ff 0%, #1890ff 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+}
+
+.clear-path-btn {
+  background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+}
+
+.clear-path-btn:hover {
+  background: linear-gradient(135deg, #ff7875 0%, #ff4d4f 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
+}
+
+.priority-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #fff9e6 0%, #fef5d4 100%);
+  border: 2px solid #ffd666;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #8c8c8c;
+  font-weight: 500;
+}
+
+.priority-tip .el-icon {
+  color: #faad14;
+  font-size: 16px;
 }
 
 .action-row {

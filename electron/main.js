@@ -664,6 +664,31 @@ ipcMain.handle('open-purchase-page', async (event, url) => {
   }
 })
 
+// 打开文件选择对话框
+ipcMain.handle('open-file-dialog', async (event, options) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: options?.title || '选择文件',
+      defaultPath: options?.defaultPath,
+      buttonLabel: options?.buttonLabel || '选择',
+      filters: options?.filters || [
+        { name: '可执行文件', extensions: ['exe', 'lnk'] },
+        { name: '所有文件', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    })
+    
+    if (result.canceled) {
+      return { success: false, canceled: true }
+    }
+    
+    return { success: true, filePath: result.filePaths[0] }
+  } catch (error) {
+    writeLog('ERROR', `打开文件对话框失败: ${error.message}`)
+    return { success: false, error: error.message }
+  }
+})
+
 // 检查管理员权限
 ipcMain.handle('check-admin-rights', async () => {
   return await checkAdminRights()
