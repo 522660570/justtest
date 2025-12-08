@@ -937,6 +937,54 @@ export default {
           ElMessage.warning('⚠️ 启动命令可能失败，请手动检查 Cursor')
         }
 
+        // 7. 验证账号切换是否成功，成功后确认换号（两阶段确认机制）
+        console.log('🔧 步骤7: 正在验证账号切换结果...')
+        try {
+          // 等待一小段时间让 Cursor 启动并加载账号信息
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          
+          // 读取 Cursor 当前登录的账号
+          const currentAccountAfterSwitch = await cursorService.getCurrentAccountInfo()
+          const currentEmailAfterSwitch = currentAccountAfterSwitch.data?.email
+          
+          console.log('🔍 切换后当前账号:', currentEmailAfterSwitch)
+          console.log('🔍 目标新账号:', newAccount.email)
+          
+          // 验证账号是否切换成功
+          if (currentEmailAfterSwitch && currentEmailAfterSwitch === newAccount.email) {
+            console.log('✅ 账号切换验证成功，正在确认换号...')
+            
+            const confirmUrl = `${API_CONFIG.BASE_URL}/confirmAccountSwitch`
+            const confirmResponse = await fetch(confirmUrl, {
+              method: 'POST',
+              headers: versionHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' }),
+              body: new URLSearchParams({
+                code: licenseCode.value,
+                mac: macAddress,
+                email: newAccount.email
+              })
+            })
+            
+            if (confirmResponse.ok) {
+              const confirmResult = await confirmResponse.json()
+              if (confirmResult.code === 1) {
+                console.log('✅ 换号确认成功')
+              } else {
+                console.warn('⚠️ 换号确认返回异常:', confirmResult.message)
+              }
+            } else {
+              console.warn('⚠️ 换号确认请求失败:', confirmResponse.status)
+            }
+          } else {
+            console.warn('⚠️ 账号切换验证失败，当前账号与目标账号不一致')
+            console.warn('   当前账号:', currentEmailAfterSwitch || '未获取到')
+            console.warn('   目标账号:', newAccount.email)
+            console.warn('   不调用确认接口，用户可重试续杯')
+          }
+        } catch (confirmError) {
+          console.warn('⚠️ 换号验证/确认异常（不影响续杯结果）:', confirmError.message)
+        }
+
         console.log('✅ Pro续期流程执行完成')
         
         // 🔧 刷新授权码状态（次卡需要更新剩余次数）
