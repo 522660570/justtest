@@ -884,10 +884,65 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
     const SQL = await initSqlJs()
     console.log('✅ sql.js 模块加载成功')
     
+    // 辅助函数：删除 WAL 和 SHM 文件
+    const deleteWalFiles = async (basePath) => {
+      try {
+        await fs.unlink(`${basePath}-wal`)
+        console.log('✅ 已清理 WAL 文件')
+      } catch (e) { /* 忽略文件不存在错误 */ }
+      
+      try {
+        await fs.unlink(`${basePath}-shm`)
+        console.log('✅ 已清理 SHM 文件')
+      } catch (e) { /* 忽略文件不存在错误 */ }
+    }
+
+    // ⚠️ 关键修复：在读取数据库前，主动清理 WAL/SHM 文件
+    // 这解决了“首次成功，后续失败”的问题，因为后续运行时存在的旧 WAL 文件会导致冲突
+    await deleteWalFiles(dbPath)
+
+    // 定义恢复函数
+    const recoverDatabase = async (filePath) => {
+      console.warn('⚠️ 正在执行数据库恢复流程...')
+      
+      // 1. 尝试备份
+      try {
+        const backupPath = `${filePath}.corrupt.${Date.now()}`
+        await fs.copyFile(filePath, backupPath)
+        console.log('✅ 已备份损坏的数据库到:', backupPath)
+      } catch (backupError) {
+        if (backupError.code !== 'ENOENT') {
+          console.error('❌ 备份损坏数据库失败:', backupError)
+        }
+      }
+      
+      // 2. 删除损坏的主文件
+      try {
+        await fs.unlink(filePath)
+        console.log('✅ 已删除损坏的数据库文件')
+      } catch (unlinkError) {
+        if (unlinkError.code !== 'ENOENT') {
+          console.warn('⚠️ 删除损坏数据库失败:', unlinkError)
+        }
+      }
+      
+      // 3. 关键：删除关联的 WAL 和 SHM 文件
+      await deleteWalFiles(filePath)
+      
+      const newDb = new SQL.Database()
+      // 确保基础表结构存在
+      try {
+        newDb.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        console.log('✅ 已初始化新数据库的 ItemTable 表结构')
+      } catch (e) {
+        console.warn('⚠️ 初始化表结构失败:', e)
+      }
+      return newDb
+    }
+
     // 读取数据库文件
     let db
     let buffer
-    let isNewDb = false
     
     try {
       buffer = await fs.readFile(dbPath)
@@ -895,33 +950,12 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
         db = new SQL.Database(buffer)
         console.log('✅ 数据库文件已加载到内存')
       } catch (dbError) {
-        // 检查是否是数据库损坏错误
+        // 打开时检查损坏
         if (dbError.message.includes('malformed') || 
             dbError.message.includes('CORRUPT') || 
             dbError.message.includes('unreadable')) {
-          console.warn('⚠️ 检测到数据库损坏，正在尝试重建...', dbError.message)
-          
-          // 备份损坏的数据库
-          try {
-            const backupPath = `${dbPath}.corrupt.${Date.now()}`
-            await fs.copyFile(dbPath, backupPath)
-            console.log('✅ 已备份损坏的数据库到:', backupPath)
-          } catch (backupError) {
-            console.error('❌ 备份损坏数据库失败:', backupError)
-          }
-          
-          // 删除损坏的数据库
-          try {
-            await fs.unlink(dbPath)
-            console.log('✅ 已删除损坏的数据库文件')
-          } catch (unlinkError) {
-            console.warn('⚠️ 删除损坏数据库失败:', unlinkError)
-          }
-          
-          // 创建新数据库
-          db = new SQL.Database()
-          isNewDb = true
-          console.log('✅ 已创建新的空数据库')
+          console.warn('⚠️ 打开时检测到数据库损坏:', dbError.message)
+          db = await recoverDatabase(dbPath)
         } else {
           throw dbError
         }
@@ -930,67 +964,85 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
       if (readError.code === 'ENOENT') {
         console.log('⚠️ 数据库文件不存在，将创建新数据库')
         db = new SQL.Database()
-        isNewDb = true
+        // 确保新库有表结构
+        try {
+          db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        } catch (e) {}
       } else {
         throw readError
       }
     }
     
-    // 如果是新数据库（或重建的），确保 ItemTable 表存在
-    if (isNewDb) {
-      try {
-        db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
-        console.log('✅ 已初始化 ItemTable 表结构')
-      } catch (tableError) {
-        console.warn('⚠️ 初始化表结构失败:', tableError)
-      }
-    }
-    
     let result
     
-    try {
-      const queryLower = query.toLowerCase().trim()
-      
-      if (queryLower.startsWith('select')) {
-        // SELECT 查询
-        const stmt = db.prepare(query)
-        stmt.bind(params)
-        
+    // 执行查询的内部函数
+    const executeQuery = (database, q, p) => {
+      const qLower = q.toLowerCase().trim()
+      if (qLower.startsWith('select')) {
+        const stmt = database.prepare(q)
+        stmt.bind(p)
         const rows = []
         while (stmt.step()) {
           rows.push(stmt.getAsObject())
         }
         stmt.free()
-        result = rows
-        console.log(`✅ SELECT 查询完成，返回 ${rows.length} 行`)
-        
-      } else if (queryLower === 'vacuum') {
-        // VACUUM 特殊处理
-        db.run('VACUUM')
-        result = { changes: 0 }
-        console.log('✅ VACUUM 执行完成')
-        
+        return { type: 'select', data: rows }
+      } else if (qLower === 'vacuum') {
+        database.run('VACUUM')
+        return { type: 'run', data: { changes: 0 } }
       } else {
-        // INSERT/UPDATE/DELETE
-        db.run(query, params)
-        const changes = db.getRowsModified()
-        result = { 
-          changes: changes,
-          lastID: 0
-        }
-        console.log(`✅ 修改查询完成，影响 ${changes} 行`)
+        database.run(q, p)
+        return { type: 'run', data: { changes: database.getRowsModified(), lastID: 0 } }
       }
-      
+    }
+
+    try {
+      try {
+        // 第一次尝试执行
+        const execResult = executeQuery(db, query, params)
+        result = execResult.data
+        console.log(`✅ 查询执行成功 (${execResult.type})`)
+        
+      } catch (queryError) {
+        // 运行时检查损坏
+        if (queryError.message.includes('malformed') || 
+            queryError.message.includes('CORRUPT') || 
+            queryError.message.includes('unreadable')) {
+          
+          console.warn('⚠️ 查询执行期间检测到数据库损坏:', queryError.message)
+          
+          // 关闭旧连接
+          try { db.close() } catch(e) {}
+          
+          // 恢复数据库
+          db = await recoverDatabase(dbPath)
+          
+          console.log('🔄 正在重试查询...')
+          // 在新数据库上重试
+          const retryResult = executeQuery(db, query, params)
+          result = retryResult.data
+          console.log('✅ 重试查询成功')
+          
+        } else {
+          throw queryError
+        }
+      }
+        
       // 保存更改回文件（sql.js 是内存数据库）
-      if (!queryLower.startsWith('select')) {
+      if (result && !query.toLowerCase().trim().startsWith('select')) {
         const data = db.export()
         const dataBuffer = Buffer.from(data)
         await fs.writeFile(dbPath, dataBuffer)
-        console.log('✅ 数据库更改已保存到文件')
+        
+        // ⚠️ 关键：写入主文件后，必须清理旧的 WAL/SHM 文件
+        // 否则 Cursor 启动时会因为主文件与 WAL 不匹配而报错 SQLITE_CORRUPT
+        await deleteWalFiles(dbPath)
+        
+        console.log('✅ 数据库更改已保存到文件 (已清理 WAL/SHM)')
       }
       
     } finally {
-      db.close()
+      try { db.close() } catch(e) {}
     }
     
     const duration = Date.now() - startTime
