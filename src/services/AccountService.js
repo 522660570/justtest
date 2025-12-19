@@ -171,13 +171,119 @@ class AccountService {
   }
 
   /**
+   * 确认换号成功（两阶段确认机制 - 第二阶段）
+   * 前端续杯成功后调用此方法确认换号
+   * @param {string} licenseCode - 授权码
+   * @param {string} email - 确认的账号邮箱
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async confirmAccountSwitch(licenseCode, email) {
+    try {
+      console.log('🔧 确认换号:', { licenseCode, email })
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
+      
+      const macAddress = await this.deviceService.getMacAddress()
+      
+      const response = await fetch(`${this.apiBaseUrl}/confirmAccountSwitch`, {
+        method: 'POST',
+        headers: versionHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' }),
+        body: new URLSearchParams({
+          code: licenseCode,
+          mac: macAddress,
+          email: email
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const result = await response.json()
+      
+      if (result.code === 1) {
+        return { success: true }
+      } else {
+        return {
+          success: false,
+          error: result.message || '确认换号失败'
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ 确认换号失败:', error)
+      return {
+        success: false,
+        error: error.message || '确认换号时发生错误'
+      }
+    }
+  }
+
+  /**
+   * 取消预分配账号
+   * 取消之前获取但未确认的预分配账号，允许重新获取新账号
+   * @param {string} licenseCode - 授权码
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async cancelPendingSwitch(licenseCode) {
+    try {
+      console.log('🔧 取消预分配:', licenseCode)
+      const vs = new VersionService()
+      if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
+        return {
+          success: false,
+          error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
+        }
+      }
+      
+      const macAddress = await this.deviceService.getMacAddress()
+      
+      const response = await fetch(`${this.apiBaseUrl}/cancelPendingSwitch`, {
+        method: 'POST',
+        headers: versionHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' }),
+        body: new URLSearchParams({
+          code: licenseCode,
+          mac: macAddress
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const result = await response.json()
+      
+      if (result.code === 1) {
+        return { success: true }
+      } else {
+        return {
+          success: false,
+          error: result.message || '取消预分配失败'
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ 取消预分配失败:', error)
+      return {
+        success: false,
+        error: error.message || '取消预分配时发生错误'
+      }
+    }
+  }
+
+  /**
    * 释放授权码占用的账号
    * @param {string} licenseCode - 授权码
    * @returns {Promise<{success: boolean, data?: object, error?: string}>}
    */
   async releaseAccountsByLicense(licenseCode) {
     try {
-      console.log(' 释放授权码占用的账号:', licenseCode)
+      console.log('🔧 释放授权码占用的账号:', licenseCode)
       const vs = new VersionService()
       if (vs.compareVersions(APP_VERSION, MIN_REQUIRED_VERSION) < 0) {
         return {

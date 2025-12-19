@@ -885,9 +885,66 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
     console.log('✅ sql.js 模块加载成功')
     
     // 读取数据库文件
-    const buffer = await fs.readFile(dbPath)
-    const db = new SQL.Database(buffer)
-    console.log('✅ 数据库文件已加载到内存')
+    let db
+    let buffer
+    let isNewDb = false
+    
+    try {
+      buffer = await fs.readFile(dbPath)
+      try {
+        db = new SQL.Database(buffer)
+        console.log('✅ 数据库文件已加载到内存')
+      } catch (dbError) {
+        // 检查是否是数据库损坏错误
+        if (dbError.message.includes('malformed') || 
+            dbError.message.includes('CORRUPT') || 
+            dbError.message.includes('unreadable')) {
+          console.warn('⚠️ 检测到数据库损坏，正在尝试重建...', dbError.message)
+          
+          // 备份损坏的数据库
+          try {
+            const backupPath = `${dbPath}.corrupt.${Date.now()}`
+            await fs.copyFile(dbPath, backupPath)
+            console.log('✅ 已备份损坏的数据库到:', backupPath)
+          } catch (backupError) {
+            console.error('❌ 备份损坏数据库失败:', backupError)
+          }
+          
+          // 删除损坏的数据库
+          try {
+            await fs.unlink(dbPath)
+            console.log('✅ 已删除损坏的数据库文件')
+          } catch (unlinkError) {
+            console.warn('⚠️ 删除损坏数据库失败:', unlinkError)
+          }
+          
+          // 创建新数据库
+          db = new SQL.Database()
+          isNewDb = true
+          console.log('✅ 已创建新的空数据库')
+        } else {
+          throw dbError
+        }
+      }
+    } catch (readError) {
+      if (readError.code === 'ENOENT') {
+        console.log('⚠️ 数据库文件不存在，将创建新数据库')
+        db = new SQL.Database()
+        isNewDb = true
+      } else {
+        throw readError
+      }
+    }
+    
+    // 如果是新数据库（或重建的），确保 ItemTable 表存在
+    if (isNewDb) {
+      try {
+        db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        console.log('✅ 已初始化 ItemTable 表结构')
+      } catch (tableError) {
+        console.warn('⚠️ 初始化表结构失败:', tableError)
+      }
+    }
     
     let result
     
