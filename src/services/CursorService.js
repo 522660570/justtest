@@ -10,7 +10,7 @@ const api = {
       return 'browser'
     }
   },
-  
+
   async getHomedir() {
     if (isElectron) {
       return await window.electronAPI.getHomedir()
@@ -18,7 +18,7 @@ const api = {
       return '/mock/home'
     }
   },
-  
+
   async pathJoin(...args) {
     if (isElectron) {
       return await window.electronAPI.pathJoin(...args)
@@ -26,7 +26,7 @@ const api = {
       return args.join('/')
     }
   },
-  
+
   async fsAccess(filePath) {
     if (isElectron) {
       return await window.electronAPI.fsAccess(filePath)
@@ -34,7 +34,7 @@ const api = {
       return true // 模拟文件存在
     }
   },
-  
+
   async fsReadFile(filePath, encoding = 'utf8') {
     if (isElectron) {
       return await window.electronAPI.fsReadFile(filePath, encoding)
@@ -42,7 +42,7 @@ const api = {
       return 'mock-file-content'
     }
   },
-  
+
   async fsWriteFile(filePath, data, encoding = 'utf8') {
     if (isElectron) {
       return await window.electronAPI.fsWriteFile(filePath, data, encoding)
@@ -50,7 +50,7 @@ const api = {
       return true // 模拟写入成功
     }
   },
-  
+
   async sqliteQuery(dbPath, query, params = []) {
     if (isElectron) {
       return await window.electronAPI.sqliteQuery(dbPath, query, params)
@@ -58,7 +58,15 @@ const api = {
       return [] // 模拟空结果
     }
   },
-  
+
+  async sqliteBatchRun(dbPath, statements) {
+    if (isElectron) {
+      return await window.electronAPI.sqliteBatchRun(dbPath, statements)
+    } else {
+      return { success: true, results: [] }
+    }
+  },
+
   async execCommand(command) {
     if (isElectron) {
       return await window.electronAPI.execCommand(command)
@@ -66,7 +74,7 @@ const api = {
       return { stdout: '', stderr: '', error: false }
     }
   },
-  
+
   async execCommandAsync(command) {
     if (isElectron) {
       return await window.electronAPI.execCommandAsync(command)
@@ -74,7 +82,7 @@ const api = {
       return { success: true, pid: 12345, message: 'Browser simulation - async command' }
     }
   },
-  
+
   async spawnDetached(command, args = []) {
     if (isElectron) {
       return await window.electronAPI.spawnDetached(command, args)
@@ -136,20 +144,20 @@ class CursorService {
 
     try {
       console.log('🔍 正在智能检测Cursor数据库文件路径...')
-      
+
       // 首先检查当前配置的路径是否存在
       const currentPathExists = await api.fsAccess(this.cursorPaths.sqlite)
       if (currentPathExists) {
         console.log('✅ 当前配置的数据库路径有效:', this.cursorPaths.sqlite)
         return
       }
-      
+
       console.log('⚠️ 当前配置的数据库路径无效:', this.cursorPaths.sqlite)
       console.log('🔍 开始搜索实际的数据库文件位置...')
-      
+
       // 使用新的API搜索数据库文件
       const searchResult = await window.electronAPI.findCursorDb()
-      
+
       if (searchResult.success && searchResult.foundPaths.length > 0) {
         console.log(`✅ 找到 ${searchResult.foundPaths.length} 个Cursor数据库文件:`)
         searchResult.foundPaths.forEach((pathInfo, index) => {
@@ -159,38 +167,38 @@ class CursorService {
             console.log('      (通过搜索命令找到)')
           }
         })
-        
+
         // 选择最新的数据库文件
         const latestDb = searchResult.foundPaths.reduce((latest, current) => {
           return new Date(current.modified) > new Date(latest.modified) ? current : latest
         })
-        
+
         console.log('🎯 选择最新的数据库文件:', latestDb.path)
-        
+
         // 更新所有相关路径
         const homeDir = await api.getHomedir()
         const dbDir = latestDb.path.replace(/[\\\/]state\.vscdb$/, '')
         const cursorUserDir = dbDir.replace(/[\\\/]globalStorage$/, '')
         const cursorRootDir = cursorUserDir.replace(/[\\\/]User$/, '')
-        
+
         this.cursorPaths = {
           ...this.cursorPaths,
           sqlite: latestDb.path,
           storage: await api.pathJoin(dbDir, 'storage.json'),
           machineId: await api.pathJoin(cursorRootDir, 'machineId')
         }
-        
+
         console.log('✅ 已更新Cursor路径配置:')
         console.log('   SQLite数据库:', this.cursorPaths.sqlite)
         console.log('   存储文件:', this.cursorPaths.storage)
         console.log('   机器ID文件:', this.cursorPaths.machineId)
-        
+
       } else {
         console.error('❌ 未找到任何Cursor数据库文件')
         console.log('💡 请确保Cursor已经运行过至少一次，或者手动登录过账号')
         console.log('🔍 搜索详情:', searchResult)
       }
-      
+
     } catch (error) {
       console.error('❌ 智能路径检测失败:', error)
     }
@@ -207,7 +215,7 @@ class CursorService {
     try {
       console.log('🔍 正在搜索Cursor可执行文件...')
       const result = await window.electronAPI.findCursorExecutable()
-      
+
       if (result.success) {
         console.log(`✅ 找到Cursor可执行文件: ${result.path} (方法: ${result.method})`)
         return result.path
@@ -226,7 +234,7 @@ class CursorService {
    */
   async getCursorPaths() {
     const homeDir = await api.getHomedir()
-    
+
     switch (this.platform) {
       case 'win32':
         return {
@@ -320,28 +328,28 @@ class CursorService {
       }
 
       const result = await api.execCommand(command)
-      
+
       // ⚠️ 修复：更严格的进程检查逻辑
       let isRunning = false
       const output = result.stdout ? result.stdout.trim() : ''
-      
+
       if (this.platform === 'win32') {
         // Windows tasklist 输出格式：
         // - 找到进程：'"Cursor.exe","12345","Console","1","123,456 K"'
         // - 未找到：'INFO: No tasks are running which match the specified criteria.'
         // 或者 taskkill 的错误输出也可能被捕获
-        
+
         // 只有当输出包含 .exe 且是 CSV 格式时才认为进程存在
-        isRunning = output.includes('Cursor.exe') && 
-                   output.includes('"') && 
-                   !output.toLowerCase().includes('no tasks') &&
-                   !output.toLowerCase().includes('not found')
+        isRunning = output.includes('Cursor.exe') &&
+          output.includes('"') &&
+          !output.toLowerCase().includes('no tasks') &&
+          !output.toLowerCase().includes('not found')
       } else {
         // macOS/Linux: pgrep 找到进程时会输出PID（纯数字）
         // 没找到时没有输出（或退出码非0）
         isRunning = output.length > 0 && /^\d+/.test(output)
       }
-      
+
       console.log(`🔍 进程检查结果 (${this.platform}):`, {
         command,
         hasOutput: !!output,
@@ -370,7 +378,7 @@ class CursorService {
    */
   async killCursorProcess() {
     await this.initialize()
-    
+
     if (!isElectron) {
       console.log('🔧 浏览器环境模拟：进程终止')
       return { success: true, message: 'Browser simulation - process killed' }
@@ -378,7 +386,7 @@ class CursorService {
 
     try {
       console.log('🔪 开始彻底关闭所有Cursor相关进程...')
-      
+
       let commands = []
       switch (this.platform) {
         case 'win32':
@@ -437,7 +445,7 @@ class CursorService {
           console.log(`⚠️ 命令执行完成 (某些进程可能不存在): ${error.message}`)
         }
       }
-      
+
       // 直接返回结果，不进行额外等待
       const processCheck = await this.checkCursorProcess()
       const isFullyClosed = !processCheck.running
@@ -462,7 +470,7 @@ class CursorService {
    */
   async startCursor() {
     await this.initialize()
-    
+
     try {
       let command
       switch (this.platform) {
@@ -492,7 +500,7 @@ class CursorService {
       // 使用异步命令执行启动应用程序
       console.log('🔧 执行启动命令:', command)
       const execResult = await api.execCommandAsync(command)
-      
+
       if (!execResult.success) {
         console.warn('⚠️ 启动命令执行失败:', execResult.error)
       } else {
@@ -518,7 +526,7 @@ class CursorService {
    */
   async resetMachineId() {
     await this.initialize()
-    
+
     if (!isElectron) {
       console.log('🔧 浏览器环境模拟：机器ID重置')
       return { success: true, message: 'Browser simulation - machine ID reset' }
@@ -526,7 +534,7 @@ class CursorService {
 
     try {
       console.log('🔄 开始完整的机器ID重置流程（参考cursor-free-vip-main）...')
-      
+
       // ⚠️ 重要：检查 Cursor 是否正在运行
       console.log('🔍 检查 Cursor 进程状态...')
       const processStatus = await this.checkCursorProcess()
@@ -540,11 +548,11 @@ class CursorService {
         }
       }
       console.log('✅ Cursor 未运行，可以继续')
-      
+
       // 1. 生成新的所有ID（参考 totally_reset_cursor.py generate_new_ids）
       const newIds = this.generateAllMachineIds()
       console.log('✅ 生成新的机器ID集合:', Object.keys(newIds))
-      
+
       // 2. 更新 storage.json（可选步骤 - 失败不阻断）
       console.log('🔧 步骤1: 更新 storage.json...')
       const storageResult = await this.updateStorageJson(newIds)
@@ -555,7 +563,7 @@ class CursorService {
       } else {
         console.log('✅ storage.json 更新成功')
       }
-      
+
       // 3. 清理数据库中的问题键（参考 CursorPool_Client）
       console.log('🔧 步骤2: 清理数据库中的 cursorai/serverConfig...')
       try {
@@ -565,7 +573,7 @@ class CursorService {
       } catch (error) {
         console.warn('⚠️ 清理 serverConfig 失败（可能不存在）:', error.message)
       }
-      
+
       // 4. 更新 SQLite 数据库中的 telemetry 字段（重要！）
       console.log('🔧 步骤3: 更新 SQLite 中的 telemetry 字段...')
       const sqliteResult = await this.updateSqliteMachineIds(newIds)
@@ -576,7 +584,7 @@ class CursorService {
       } else {
         console.log('✅ SQLite telemetry 更新成功')
       }
-      
+
       // 5. 更新 machineId 文件
       console.log('🔧 步骤4: 更新 machineId 文件...')
       let machineIdResult = { success: false }
@@ -589,7 +597,7 @@ class CursorService {
         } catch (error) {
           console.log('⚠️ 没有找到现有 machineId（将创建新文件）')
         }
-        
+
         // 写入新的 machineId（使用 devDeviceId）
         await api.fsWriteFile(this.cursorPaths.machineId, newIds['telemetry.devDeviceId'], 'utf8')
         console.log('✅ 新 machineId 文件已写入:', newIds['telemetry.devDeviceId'])
@@ -600,7 +608,7 @@ class CursorService {
         machineIdResult.success = false
         machineIdResult.error = error.message
       }
-      
+
       // 6. 更新系统级机器码（Windows注册表）- 参考cursor-free-vip-main
       console.log('🔧 步骤5: 更新系统级机器码...')
       const systemUpdateResult = await this.updateSystemMachineIds(newIds)
@@ -620,53 +628,54 @@ class CursorService {
         machineIdFile: machineIdResult.success,
         systemRegistry: systemUpdateResult.success
       }
-      
+
       const successCount = Object.values(summary).filter(v => v).length
       const totalSteps = Object.keys(summary).length
-      
+
       console.log('═'.repeat(50))
       console.log('📊 机器ID重置完成汇总:')
       console.log(`  ${summary.storageJson ? '✅' : '⚠️'} storage.json: ${summary.storageJson ? '成功' : '失败（可跳过）'}`)
       console.log(`  ${summary.sqlite ? '✅' : '❌'} SQLite数据库: ${summary.sqlite ? '成功' : '失败'}`)
       console.log(`  ${summary.machineIdFile ? '✅' : '❌'} machineId文件: ${summary.machineIdFile ? '成功' : '失败'}`)
       console.log(`  ${summary.systemRegistry ? '✅' : '⚠️'} Windows注册表: ${summary.systemRegistry ? '成功' : '失败/跳过'}`)
-      console.log(`  📊 成功率: ${successCount}/${totalSteps} (${Math.round(successCount/totalSteps*100)}%)`)
+      console.log(`  📊 成功率: ${successCount}/${totalSteps} (${Math.round(successCount / totalSteps * 100)}%)`)
       console.log('═'.repeat(50))
-      
+
       // ⚠️ 重要：判断成功的核心逻辑
-      // 关键步骤：SQLite（最重要）+ machineId文件
-      // 可选步骤：storage.json（可失败）+ Windows注册表（可失败）
-      const coreStepsSuccess = summary.sqlite && summary.machineIdFile
-      
+      // machineId 文件是唯一必须成功的步骤
+      // SQLite 失败时降级处理，不阻断续杯流程
+      const coreStepsSuccess = summary.machineIdFile
+
       if (coreStepsSuccess) {
-        // 核心步骤成功，即算成功
-        console.log('✅ 机器ID重置成功！（核心步骤：SQLite + machineId文件 已完成）')
+        console.log('✅ 机器ID重置成功！（machineId文件 已完成）')
+        if (summary.sqlite) {
+          console.log('✅ SQLite telemetry 更新成功')
+        }
         console.log('📊 新的机器ID:')
         Object.entries(newIds).forEach(([key, value]) => {
           console.log(`  - ${key}: ${value.substring(0, 20)}...`)
         })
 
         const warnings = []
+        if (!summary.sqlite) warnings.push('SQLite 更新失败（已降级处理，不影响续杯流程）')
         if (!summary.storageJson) warnings.push('storage.json 更新失败（可跳过）')
         if (!summary.systemRegistry && this.platform === 'win32') warnings.push('Windows注册表更新失败（需管理员权限）')
 
         return {
           success: true,
           newIds: newIds,
-          message: 'Machine ID reset successfully (core steps completed)',
+          message: 'Machine ID reset successfully',
           summary,
           warnings
         }
       } else {
-        // 核心步骤失败，重置失败
-        console.error('❌ 机器ID重置失败！核心步骤未完成')
-        console.error('   SQLite:', summary.sqlite ? '✅' : '❌')
-        console.error('   machineId文件:', summary.machineIdFile ? '✅' : '❌')
-        
+        // machineId 文件更新失败，这才是真正的阻断
+        console.error('❌ 机器ID重置失败！machineId文件未更新')
+
         return {
           success: false,
-          error: `核心步骤失败 - SQLite:${summary.sqlite?'成功':'失败'}, machineId:${summary.machineIdFile?'成功':'失败'}`,
-          message: 'SQLite 或 machineId 文件更新失败，重置失败',
+          error: `machineId文件更新失败`,
+          message: 'machineId 文件更新失败，重置失败',
           summary
         }
       }
@@ -767,13 +776,13 @@ class CursorService {
    * 生成UUID的辅助函数
    */
   generateUUID() {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0
-        const v = c === 'x' ? r : (r & 0x3 | 0x8)
-        return v.toString(16)
-      })
-    }
-    
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = Math.random() * 16 | 0
+      const v = c === 'x' ? r : (r & 0x3 | 0x8)
+      return v.toString(16)
+    })
+  }
+
   /**
    * 生成所有机器ID
    * 参考三个开源项目的最佳实践
@@ -788,7 +797,7 @@ class CursorService {
       }
       return result
     }
-    
+
     // 生成 SHA512 哈希（128字符）- 用于 macMachineId  
     const generateHash512 = () => {
       const chars = '0123456789abcdef'
@@ -798,12 +807,12 @@ class CursorService {
       }
       return result
     }
-    
+
     const devDeviceId = this.generateUUID()
     const machineId = generateHash256()
     const macMachineId = generateHash512()
     const sqmId = `{${this.generateUUID().toUpperCase()}}`
-    
+
     // ⚠️ 关键：参考 CursorPool 和 cursor-free-vip
     // storage.serviceMachineId 必须等于 devDeviceId
     return {
@@ -833,7 +842,7 @@ class CursorService {
   async updateStorageJson(newIds) {
     try {
       console.log('📄 读取 storage.json...', this.cursorPaths.storage)
-      
+
       let config = {}
       try {
         let content = await api.fsReadFile(this.cursorPaths.storage, 'utf8')
@@ -845,7 +854,7 @@ class CursorService {
         console.warn('⚠️ storage.json 不存在或读取失败，将创建新文件:', error.message)
         config = {}
       }
-      
+
       // ⚠️ 参考 CursorPool: storage.json 只写4个字段
       // storage.serviceMachineId 不写入 storage.json（只写入 SQLite）
       const storageFields = {
@@ -854,13 +863,13 @@ class CursorService {
         'telemetry.macMachineId': newIds['telemetry.macMachineId'],
         'telemetry.sqmId': newIds['telemetry.sqmId']
       }
-      
+
       // 更新配置
       Object.assign(config, storageFields)
-      
+
       // 写回文件（确保 UTF-8 without BOM）
       const jsonString = JSON.stringify(config, null, 4)
-      
+
       // 尝试写入，如果失败尝试解锁
       try {
         await api.fsWriteFile(this.cursorPaths.storage, jsonString, 'utf8')
@@ -880,9 +889,9 @@ class CursorService {
           throw writeError
         }
       }
-      
+
       console.log('📊 写入的字段:', Object.keys(storageFields).join(', '))
-      
+
       return { success: true }
     } catch (error) {
       console.error('❌ storage.json 更新失败（已跳过，不影响后续步骤）:', error.message)
@@ -903,14 +912,14 @@ class CursorService {
 
     try {
       console.log('🔧 开始更新系统级机器码...')
-      
+
       if (this.platform === 'win32') {
         // Windows: 更新注册表中的 MachineGuid 和 SQMClient MachineId
         console.log('🪟 Windows平台：更新注册表...')
-        
+
         let updatedCount = 0
         let needsAdmin = false
-        
+
         // 1. 更新 HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid
         // ⚠️ 参考cursor-free-vip-main: 现场生成新的UUID
         const newMachineGuid = this.generateUUID()
@@ -920,7 +929,7 @@ class CursorService {
           'MachineGuid',
           newMachineGuid
         )
-        
+
         if (machineGuidResult.success) {
           console.log('✅ MachineGuid 更新成功:', newMachineGuid)
           updatedCount++
@@ -930,7 +939,7 @@ class CursorService {
             needsAdmin = true
           }
         }
-        
+
         // 2. 更新 HKLM\SOFTWARE\Microsoft\SQMClient\MachineId
         // ⚠️ 参考cursor-free-vip-main: 现场生成新的GUID（带大括号）
         const newSqmId = `{${this.generateUUID().toUpperCase()}}`
@@ -940,7 +949,7 @@ class CursorService {
           'MachineId',
           newSqmId
         )
-        
+
         if (sqmIdResult.success) {
           console.log('✅ SQMClient MachineId 更新成功:', newSqmId)
           updatedCount++
@@ -950,7 +959,7 @@ class CursorService {
             needsAdmin = true
           }
         }
-        
+
         if (updatedCount > 0) {
           console.log(`✅ Windows注册表更新完成 (${updatedCount}/2 个键值)`)
           return {
@@ -996,42 +1005,37 @@ class CursorService {
 
   /**
    * 更新 SQLite 中的 telemetry 字段
-   * 参考 CursorPool + cursor-free-vip: SQLite 必须写5个字段
+   * ⚠️ 使用批量操作，将所有 INSERT 合并为单次文件读写（避免 Windows 文件锁竞态）
    */
   async updateSqliteMachineIds(newIds) {
     try {
       console.log('🗄️ 更新 SQLite 中的 telemetry 字段...', this.cursorPaths.sqlite)
-      
-      // ⚠️ 参考 CursorPool: SQLite 必须写入所有5个字段
-      // 包括 storage.serviceMachineId（等于 devDeviceId）
+
       const sqliteFields = {
         'telemetry.devDeviceId': newIds['telemetry.devDeviceId'],
         'telemetry.machineId': newIds['telemetry.machineId'],
         'telemetry.macMachineId': newIds['telemetry.macMachineId'],
         'telemetry.sqmId': newIds['telemetry.sqmId'],
-        'storage.serviceMachineId': newIds['telemetry.devDeviceId']  // 关键！必须等于 devDeviceId
+        'storage.serviceMachineId': newIds['telemetry.devDeviceId']
       }
-      
-      let updateCount = 0
-      for (const [key, value] of Object.entries(sqliteFields)) {
-        const sql = "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)"
-        await api.sqliteQuery(this.cursorPaths.sqlite, sql, [key, value])
-        console.log(`✅ 更新 ${key}: ${value.substring(0, 30)}...`)
-        updateCount++
+
+      // ⚠️ 批量操作：5 条 INSERT 合并为 1 次文件读写，彻底避免 Windows 文件锁竞态
+      const statements = Object.entries(sqliteFields).map(([key, value]) => ({
+        sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+        params: [key, value]
+      }))
+
+      console.log(`📦 批量执行 ${statements.length} 条 SQL 语句...`)
+      const batchResult = await api.sqliteBatchRun(this.cursorPaths.sqlite, statements)
+
+      if (batchResult.success) {
+        const successCount = batchResult.results.filter(r => r.success).length
+        console.log(`✅ SQLite 字段更新成功，共更新 ${successCount} 个字段`)
+        return { success: true, updateCount: successCount }
+      } else {
+        console.error('❌ SQLite 批量更新失败')
+        return { success: false, error: '所有批量语句均执行失败' }
       }
-      
-      console.log(`✅ SQLite 字段更新成功，共更新 ${updateCount} 个字段`)
-      
-      // ⚠️ 执行 VACUUM 优化数据库（参考 Cursor_Windsurf_Reset）
-      console.log('🔧 优化数据库 (VACUUM)...')
-      try {
-        await api.sqliteQuery(this.cursorPaths.sqlite, 'VACUUM', [])
-        console.log('✅ 数据库优化完成')
-    } catch (error) {
-        console.warn('⚠️ VACUUM 执行失败（不影响功能）:', error.message)
-      }
-      
-      return { success: true, updateCount }
     } catch (error) {
       console.error('❌ SQLite 更新失败:', error)
       return { success: false, error: error.message }
@@ -1074,7 +1078,7 @@ class CursorService {
    */
   async getAllCurrentMachineIds() {
     await this.initialize()
-    
+
     if (!isElectron) {
       return {
         success: false,
@@ -1100,15 +1104,15 @@ class CursorService {
         // ⚠️ 移除 BOM 字符（如果存在）
         content = this.removeBOM(content)
         const data = JSON.parse(content)
-        
+
         // 打印所有存在的字段（调试用）
         const allKeys = Object.keys(data)
         console.log('📊 storage.json 中的所有字段:', allKeys.length, '个')
-        const machineRelatedKeys = allKeys.filter(k => 
+        const machineRelatedKeys = allKeys.filter(k =>
           k.includes('machine') || k.includes('telemetry') || k.includes('storage')
         )
         console.log('🔍 机器相关字段:', machineRelatedKeys)
-        
+
         result.storageJson = {
           'telemetry.machineId': data['telemetry.machineId'] || 'Not found',
           'telemetry.macMachineId': data['telemetry.macMachineId'] || 'Not found',
@@ -1132,7 +1136,7 @@ class CursorService {
           'telemetry.sqmId',
           'storage.serviceMachineId'
         ]
-        
+
         for (const key of keys) {
           const rows = await api.sqliteQuery(
             this.cursorPaths.sqlite,
@@ -1160,15 +1164,15 @@ class CursorService {
       // 4. 从 Windows 注册表读取（仅Windows）
       if (this.platform === 'win32') {
         console.log('🪟 读取 Windows 注册表...')
-        
+
         // 读取 MachineGuid
         try {
           const machineGuidResult = await window.electronAPI.readWindowsRegistry(
             'HKLM\\SOFTWARE\\Microsoft\\Cryptography',
             'MachineGuid'
           )
-          result.windowsRegistry.MachineGuid = machineGuidResult.success 
-            ? machineGuidResult.value 
+          result.windowsRegistry.MachineGuid = machineGuidResult.success
+            ? machineGuidResult.value
             : `Error: ${machineGuidResult.error}`
         } catch (error) {
           result.windowsRegistry.MachineGuid = `Error: ${error.message}`
@@ -1180,13 +1184,13 @@ class CursorService {
             'HKLM\\SOFTWARE\\Microsoft\\SQMClient',
             'MachineId'
           )
-          result.windowsRegistry.SQMClientMachineId = sqmResult.success 
-            ? sqmResult.value 
+          result.windowsRegistry.SQMClientMachineId = sqmResult.success
+            ? sqmResult.value
             : `Error: ${sqmResult.error}`
         } catch (error) {
           result.windowsRegistry.SQMClientMachineId = `Error: ${error.message}`
         }
-        
+
         console.log('✅ Windows 注册表读取完成')
       }
 
@@ -1232,7 +1236,7 @@ class CursorService {
    */
   async updateAccountStorage(accountData) {
     await this.initialize()
-    
+
     if (!isElectron) {
       console.log('🔧 浏览器环境模拟：账号存储更新')
       return { success: true, message: 'Browser simulation - account updated' }
@@ -1250,7 +1254,7 @@ class CursorService {
         accessTokenPreview: accountData.accessToken ? accountData.accessToken.substring(0, 50) + '...' : 'null'
       })
       console.log('📂 SQLite数据库路径:', this.cursorPaths.sqlite)
-      
+
       // 检查数据库文件是否存在
       const dbExists = await api.fsAccess(this.cursorPaths.sqlite)
       if (!dbExists) {
@@ -1309,7 +1313,7 @@ class CursorService {
       // 准备更新的字段（参考 cursor-free-vip-main 的实现）
       // ⚠️ 关键：signUpType 可能需要使用 "Auth_0" (带下划线) 而不是 "Auth0"
       const signUpType = accountData.signUpType === 'Auth0' ? 'Auth_0' : accountData.signUpType
-      
+
       const updates = [
         ['cursorAuth/cachedSignUpType', signUpType || 'Auth_0'],
         ['cursorAuth/cachedEmail', accountData.email],
@@ -1336,7 +1340,7 @@ class CursorService {
 
       // 🔑 使用事务确保数据完整性（参考cursor-free-vip的实现）
       console.log('🔄 开始数据库事务...')
-      
+
       // 逐一更新每个字段
       for (const [key, value] of updates) {
         if (value) {
@@ -1344,11 +1348,11 @@ class CursorService {
             // 先检查键是否存在
             const existingRows = await api.sqliteQuery(this.cursorPaths.sqlite, "SELECT COUNT(*) as count FROM ItemTable WHERE key = ?", [key])
             const exists = existingRows.length > 0 && existingRows[0].count > 0
-            
+
             // 执行插入或更新（使用INSERT OR REPLACE更可靠）
             const sql = "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)"
             await api.sqliteQuery(this.cursorPaths.sqlite, sql, [key, value])
-            
+
             console.log(`✅ ${exists ? '更新' : '插入'} ${key.split('/').pop()}`)
             updatedFields.push(key)
           } catch (error) {
@@ -1368,7 +1372,7 @@ class CursorService {
         updatedFields: updatedFields,
         storagePath: this.cursorPaths.sqlite
       }
-      
+
     } catch (error) {
       console.error('❌ 更新账号存储失败:', error)
       return {
@@ -1383,7 +1387,7 @@ class CursorService {
    */
   async getCurrentAccountInfo() {
     await this.initialize()
-    
+
     if (!isElectron) {
       return {
         success: true,
@@ -1422,10 +1426,10 @@ class CursorService {
       }
 
       // 数据库连接由IPC处理程序自动管理
-      
+
       const hasAccessToken = !!authData['cursorAuth/accessToken'] || !!authData['WorkosCursorSessionToken']
       const hasSessionToken = !!authData['WorkosCursorSessionToken']
-      
+
       const accountInfo = {
         email: authData['cursorAuth/cachedEmail'] || 'Not logged in',
         signUpType: authData['cursorAuth/cachedSignUpType'] || 'Unknown',
@@ -1437,7 +1441,7 @@ class CursorService {
       }
 
       console.log('📊 当前账号信息 (从SQLite读取):', accountInfo)
-      
+
       return {
         success: true,
         data: accountInfo
@@ -1463,34 +1467,34 @@ class CursorService {
   async waitAndVerifyAccountSwitch(expectedEmail, maxWaitTime = 15000) {
     console.log(`⏳ 等待账号切换生效，目标邮箱: ${expectedEmail}`)
     console.log(`⏰ 最大等待时间: ${maxWaitTime / 1000} 秒`)
-    
+
     const startTime = Date.now()
     let attemptCount = 0
-    
+
     while (Date.now() - startTime < maxWaitTime) {
       attemptCount++
       console.log(`🔍 第 ${attemptCount} 次验证账号状态...`)
-      
+
       const accountResult = await this.getCurrentAccountInfo()
-      
+
       if (accountResult.success && accountResult.data.email === expectedEmail) {
         console.log(`✅ 账号切换成功验证: ${expectedEmail}`)
         console.log(`📊 验证结果:`, accountResult.data)
         return { success: true, account: accountResult.data, attempts: attemptCount }
       }
-      
+
       console.log(`⏳ 等待中... 当前邮箱: ${accountResult.data?.email}, 目标: ${expectedEmail}`)
       await new Promise(resolve => setTimeout(resolve, 2000)) // 等待2秒
     }
-    
+
     console.log(`❌ 账号切换验证超时，未能切换到目标邮箱: ${expectedEmail}`)
     console.log(`🕐 总等待时间: ${(Date.now() - startTime) / 1000} 秒，尝试次数: ${attemptCount}`)
-    
+
     // 返回最终的账号状态
     const finalAccount = await this.getCurrentAccountInfo()
-    return { 
-      success: false, 
-      timeout: true, 
+    return {
+      success: false,
+      timeout: true,
       attempts: attemptCount,
       finalAccount: finalAccount.data
     }
@@ -1507,13 +1511,13 @@ class CursorService {
 
     try {
       console.log('🧹 开始深度清理Cursor缓存...')
-      
+
       // 更全面的缓存清理路径（基于cursor-free-vip的实现）
       // 使用 api.pathJoin 而不是 path.join (修复 path is not defined 错误)
       const storagePath = this.cursorPaths.storage
       const lastSlashIndex = storagePath.lastIndexOf('/') !== -1 ? storagePath.lastIndexOf('/') : storagePath.lastIndexOf('\\')
       const userDataDir = storagePath.substring(0, lastSlashIndex)
-      
+
       const cleanupPaths = [
         this.cursorPaths.updater,
         await api.pathJoin(userDataDir, 'logs'),
@@ -1535,19 +1539,19 @@ class CursorService {
 
       let cleanedCount = 0
       let skippedCount = 0
-      
+
       for (const cleanPath of cleanupPaths) {
         try {
           // 使用 fs.access 检查路径是否存在
           try {
             await fs.access(cleanPath)
             // 路径存在，进行清理
-            
+
             // 对于某些关键目录，只清理内容而不删除目录本身
-            const isKeyDirectory = cleanPath.includes('Local Storage') || 
-                                 cleanPath.includes('Session Storage') ||
-                                 cleanPath.includes('IndexedDB')
-                                 
+            const isKeyDirectory = cleanPath.includes('Local Storage') ||
+              cleanPath.includes('Session Storage') ||
+              cleanPath.includes('IndexedDB')
+
             if (isKeyDirectory) {
               // 清理目录内容但保留目录结构
               console.log(`⚠️ 跳过关键目录的清理: ${cleanPath}`)
@@ -1577,9 +1581,9 @@ class CursorService {
       console.log(`   成功清理: ${cleanedCount} 个路径`)
       console.log(`   跳过路径: ${skippedCount} 个路径`)
       console.log(`   总计路径: ${cleanupPaths.length} 个路径`)
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         message: `Deep cache cleaning completed (${cleanedCount}/${cleanupPaths.length} paths cleaned)`,
         cleanedPaths: cleanedCount,
         skippedPaths: skippedCount,
@@ -1587,9 +1591,9 @@ class CursorService {
       }
     } catch (error) {
       console.error('❌ 深度缓存清理失败:', error)
-      return { 
-        success: false, 
-        error: error.message 
+      return {
+        success: false,
+        error: error.message
       }
     }
   }
@@ -1629,17 +1633,17 @@ class CursorService {
           await fs.access(file.path)
           const stats = await fs.stat(file.path)
           const content = await fs.readFile(file.path, 'utf8')
-          
+
           diagnosis.files[file.name] = {
             exists: true,
             path: file.path,
             size: stats.size,
             modified: stats.mtime.toISOString(),
-            contentPreview: file.name === 'storage.json' ? 
-              this.extractAuthInfo(content) : 
+            contentPreview: file.name === 'storage.json' ?
+              this.extractAuthInfo(content) :
               content.substring(0, 200) + (content.length > 200 ? '...' : '')
           }
-          
+
           console.log(`✅ 找到文件: ${file.name} (${stats.size} bytes, 修改时间: ${stats.mtime.toISOString()})`)
         } catch (error) {
           diagnosis.files[file.name] = {
@@ -1691,8 +1695,8 @@ class CursorService {
     try {
       const data = JSON.parse(storageContent)
       return {
-        authKeys: Object.keys(data).filter(key => 
-          key.includes('cursorAuth') || 
+        authKeys: Object.keys(data).filter(key =>
+          key.includes('cursorAuth') ||
           key.includes('WorkosCursorSessionToken') ||
           key.includes('machineId')
         ),

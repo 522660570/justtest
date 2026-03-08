@@ -26,47 +26,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fsReadFile: (filePath, encoding) => ipcRenderer.invoke('fs-read-file', filePath, encoding),
   fsWriteFile: (filePath, data, encoding) => ipcRenderer.invoke('fs-write-file', filePath, data, encoding),
   sqliteQuery: (dbPath, query, params) => ipcRenderer.invoke('sqlite-query', dbPath, query, params),
+  sqliteBatchRun: (dbPath, statements) => ipcRenderer.invoke('sqlite-batch-run', dbPath, statements),
   execCommand: (command) => ipcRenderer.invoke('exec-command', command),
   execCommandAsync: (command) => ipcRenderer.invoke('exec-command-async', command),
   spawnDetached: (command, args) => ipcRenderer.invoke('spawn-detached', command, args),
-  
+
   // 调试和路径检测API
   findCursorExecutable: () => ipcRenderer.invoke('find-cursor-executable'),
   findCursorDb: () => ipcRenderer.invoke('find-cursor-db'),
   listDirectory: (dirPath) => ipcRenderer.invoke('list-directory', dirPath),
-  
+
   // 设备信息API
   getMacAddress: () => ipcRenderer.invoke('get-mac-address'),
-  
+
   // Windows注册表操作API（用于机器码重置）
   updateWindowsRegistry: (keyPath, valueName, value) => ipcRenderer.invoke('update-windows-registry', keyPath, valueName, value),
   readWindowsRegistry: (keyPath, valueName) => ipcRenderer.invoke('read-windows-registry', keyPath, valueName),
   unlockFile: (filePath) => ipcRenderer.invoke('unlock-file', filePath),
-  
+
   // 日志相关API
   getLogPath: () => ipcRenderer.invoke('get-log-path'),
   readLogFile: (lines) => ipcRenderer.invoke('read-log-file', lines),
   clearLogFile: () => ipcRenderer.invoke('clear-log-file'),
-  
+
   // 自定义标题栏API
   startDrag: (data) => ipcRenderer.invoke('start-drag', data),
   getWindowState: () => ipcRenderer.invoke('get-window-state'),
-  
+
   // 管理员权限检查API
   checkAdminRights: () => ipcRenderer.invoke('check-admin-rights'),
-  
+
   // 购买页面API
   openPurchasePage: (url) => ipcRenderer.invoke('open-purchase-page', url),
-  
+
   // 文件选择对话框API
   openFileDialog: (options) => ipcRenderer.invoke('open-file-dialog', options),
-  
+
   // 环境检测API
   getAppEnvironment: () => ipcRenderer.invoke('get-app-environment'),
-  
+
   // 调试模式API
   getDebugMode: () => ipcRenderer.invoke('get-debug-mode'),
-  
+
   // Cursor版本号API
   getCursorVersion: () => ipcRenderer.invoke('get-cursor-version'),
 

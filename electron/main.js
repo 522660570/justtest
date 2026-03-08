@@ -55,7 +55,7 @@ const checkAdminRights = async () => {
   if (process.platform !== 'win32') {
     return true // 非Windows系统假设有权限
   }
-  
+
   try {
     // 使用net session命令检查管理员权限
     const result = await execAsync('net session >nul 2>&1 && echo "admin" || echo "user"')
@@ -90,19 +90,19 @@ const writeLog = async (level, message, error = null) => {
     const { logFile } = getLogPath()
     const timestamp = new Date().toISOString()
     let logEntry = `[${timestamp}] [${level}] ${message}`
-    
+
     if (error) {
       logEntry += `\nError: ${error.message}`
       if (error.stack) {
         logEntry += `\nStack: ${error.stack}`
       }
     }
-    
+
     logEntry += '\n'
-    
+
     // 同时输出到控制台
     console.log(logEntry.trim())
-    
+
     // 写入文件
     await fs.appendFile(logFile, logEntry, 'utf8')
   } catch (logError) {
@@ -114,12 +114,12 @@ const writeLog = async (level, message, error = null) => {
 process.on('uncaughtException', async (error) => {
   await writeLog('FATAL', '未捕获的异常', error)
   console.error('未捕获的异常:', error)
-  
+
   // 显示错误对话框
   if (mainWindow) {
     dialog.showErrorBox('应用程序错误', `发生了未预期的错误：\n${error.message}\n\n请查看日志文件获取详细信息。`)
   }
-  
+
   // 延迟退出，让日志写入完成
   setTimeout(() => {
     app.exit(1)
@@ -140,9 +140,9 @@ async function createWindow() {
     console.log('📂 当前目录:', __dirname)
     console.log('📦 是否打包:', app.isPackaged)
     console.log('🖥️ 平台:', process.platform, process.arch)
-    
+
     const preloadPath = path.join(__dirname, 'preload.js')
-    
+
     // 检查 preload 文件是否存在
     try {
       await fs.access(preloadPath)
@@ -158,7 +158,7 @@ async function createWindow() {
         throw new Error(`无法找到 preload.js 文件: ${preloadPath}`)
       }
     }
-    
+
     // 创建浏览器窗口（简化配置，提高兼容性）
     mainWindow = new BrowserWindow({
       width: 1200,
@@ -197,7 +197,7 @@ async function createWindow() {
       // vibrancy: 'none',
       // visualEffectState: 'active'
     })
-    
+
     console.log('✅ BrowserWindow 创建成功')
 
     // 加载应用（增强错误处理）
@@ -212,7 +212,7 @@ async function createWindow() {
         // 生产模式：智能路径查找
         let indexPath
         const possiblePaths = []
-        
+
         if (app.isPackaged) {
           // 打包后可能的路径
           possiblePaths.push(
@@ -228,7 +228,7 @@ async function createWindow() {
             path.join(__dirname, 'dist', 'index.html')
           )
         }
-        
+
         // 尝试找到存在的路径
         for (const testPath of possiblePaths) {
           try {
@@ -240,11 +240,11 @@ async function createWindow() {
             console.log('⏭️ 路径不存在，尝试下一个:', testPath)
           }
         }
-        
+
         if (!indexPath) {
           throw new Error('无法找到 index.html 文件。尝试的路径:\n' + possiblePaths.join('\n'))
         }
-        
+
         console.log('🔍 加载页面:', indexPath)
         await mainWindow.loadFile(indexPath)
         console.log('✅ 页面加载成功')
@@ -269,7 +269,7 @@ async function createWindow() {
     // 调试功能（仅在调试模式下启用）
     if (DEBUG_MODE) {
       console.log('🔧 调试功能已启用: F12 打开开发者工具, Ctrl+Shift+D 打开调试面板')
-      
+
       // F12 打开/关闭开发者工具
       mainWindow.webContents.on('before-input-event', (event, input) => {
         if (input.key === 'F12') {
@@ -281,7 +281,7 @@ async function createWindow() {
           }
         }
       })
-      
+
       // 开发环境默认打开开发者工具
       if (isDev) {
         setTimeout(() => {
@@ -294,7 +294,7 @@ async function createWindow() {
         event.preventDefault()
       })
     }
-    
+
     // 当窗口准备好显示时（添加超时保护）
     let shown = false
     mainWindow.once('ready-to-show', () => {
@@ -305,7 +305,7 @@ async function createWindow() {
         console.log('✅ 窗口已显示')
       }
     })
-    
+
     // 超时保护：5秒后强制显示窗口（防止卡住）
     setTimeout(() => {
       if (!shown && mainWindow) {
@@ -315,13 +315,13 @@ async function createWindow() {
         mainWindow.focus()
       }
     }, 5000)
-    
+
     // 监听加载失败事件（简化版）
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       console.error(`页面加载失败: ${errorDescription} (${errorCode}) - ${validatedURL}`)
       dialog.showErrorBox('加载失败', `页面加载失败：\n${errorDescription}`)
     })
-    
+
     // 监听渲染进程崩溃（简化版）
     mainWindow.webContents.on('render-process-gone', (event, details) => {
       console.error(`渲染进程崩溃: ${details.reason}`)
@@ -347,39 +347,39 @@ async function createWindow() {
       require('electron').shell.openExternal(url)
       return { action: 'deny' }
     })
-    
+
     // 禁用开发者工具和右键菜单
     mainWindow.webContents.on('context-menu', (event) => {
       event.preventDefault()
     })
-    
+
     // 禁用所有开发者工具快捷键
     mainWindow.webContents.on('before-input-event', (event, input) => {
       // 禁用 F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U 等
-      if (input.key === 'F12' || 
-          (input.control && input.shift && input.key === 'I') ||
-          (input.control && input.shift && input.key === 'J') ||
-          (input.control && input.key === 'U') ||
-          (input.control && input.key === 'Shift' && input.key === 'I')) {
+      if (input.key === 'F12' ||
+        (input.control && input.shift && input.key === 'I') ||
+        (input.control && input.shift && input.key === 'J') ||
+        (input.control && input.key === 'U') ||
+        (input.control && input.key === 'Shift' && input.key === 'I')) {
         event.preventDefault()
       }
     })
-    
+
     // 禁用右键菜单
     mainWindow.webContents.on('context-menu', (event) => {
       event.preventDefault()
     })
-    
+
     // 禁用拖拽文件
     mainWindow.webContents.on('will-navigate', (event) => {
       event.preventDefault()
     })
-    
+
   } catch (error) {
     await writeLog('FATAL', '创建窗口时发生错误', error)
-    
+
     dialog.showErrorBox('启动失败', `应用程序启动失败：\n${error.message}\n\n请查看日志文件获取详细信息。`)
-    
+
     app.quit()
   }
 }
@@ -388,9 +388,9 @@ async function createWindow() {
 // ⚠️ 捕获启动错误
 process.on('uncaughtException', (error) => {
   console.error('❌ 未捕获的异常:', error)
-  
+
   if (error.message.includes('Failed to load')) {
-    dialog.showErrorBox('启动失败', 
+    dialog.showErrorBox('启动失败',
       '应用启动失败。\n\n' +
       '可能的解决方法：\n' +
       '1. 以管理员身份运行\n' +
@@ -399,7 +399,7 @@ process.on('uncaughtException', (error) => {
       `错误详情: ${error.message}`
     )
   }
-  
+
   // 延迟退出，确保对话框显示
   setTimeout(() => app.quit(), 3000)
 })
@@ -410,7 +410,7 @@ app.whenReady().then(async () => {
     console.log('📦 应用版本:', app.getVersion())
     console.log('📂 应用路径:', app.getAppPath())
     console.log('📂 用户数据:', app.getPath('userData'))
-    
+
     // 立即创建窗口
     await createWindow()
     console.log('✅ 窗口创建成功')
@@ -423,9 +423,9 @@ app.whenReady().then(async () => {
     })
   } catch (error) {
     console.error('❌ 启动失败:', error)
-    
+
     // 显示详细错误信息
-    dialog.showErrorBox('应用启动失败', 
+    dialog.showErrorBox('应用启动失败',
       `启动过程中发生错误：\n\n${error.message}\n\n` +
       `请尝试：\n` +
       `1. 右键点击应用 → 以管理员身份运行\n` +
@@ -434,7 +434,7 @@ app.whenReady().then(async () => {
       `4. 安装 Visual C++ 运行库\n\n` +
       `如果问题持续，请联系技术支持。`
     )
-    
+
     app.quit()
   }
 })
@@ -626,11 +626,11 @@ ipcMain.handle('start-drag', (event, data) => {
     const { x, y } = data
     const [currentX, currentY] = mainWindow.getPosition()
     const [mouseX, mouseY] = mainWindow.getBounds()
-    
+
     // 计算鼠标在窗口内的相对位置
     const offsetX = x - mouseX
     const offsetY = y - mouseY
-    
+
     // 开始拖拽
     mainWindow.setPosition(x - offsetX, y - offsetY)
   }
@@ -652,10 +652,10 @@ ipcMain.handle('get-window-state', () => {
 ipcMain.handle('open-purchase-page', async (event, url) => {
   try {
     writeLog('INFO', `打开购买页面: ${url}`)
-    
+
     // 使用shell.openExternal打开外部浏览器
     await shell.openExternal(url)
-    
+
     writeLog('INFO', '成功打开购买页面')
     return { success: true }
   } catch (error) {
@@ -677,11 +677,11 @@ ipcMain.handle('open-file-dialog', async (event, options) => {
       ],
       properties: ['openFile']
     })
-    
+
     if (result.canceled) {
       return { success: false, canceled: true }
     }
-    
+
     return { success: true, filePath: result.filePaths[0] }
   } catch (error) {
     writeLog('ERROR', `打开文件对话框失败: ${error.message}`)
@@ -719,7 +719,7 @@ app.on('web-contents-created', (event, contents) => {
 app.on('web-contents-created', (event, contents) => {
   contents.on('will-navigate', (navigationEvent, navigationURL) => {
     const parsedUrl = new URL(navigationURL)
-    
+
     if (parsedUrl.origin !== 'http://localhost:5173' && parsedUrl.origin !== 'file://') {
       navigationEvent.preventDefault()
     }
@@ -789,7 +789,7 @@ ipcMain.handle('get-config-file-info', async () => {
     const stats = await fs.stat(configFile)
     const data = await fs.readFile(configFile, 'utf8')
     const config = JSON.parse(data)
-    
+
     return {
       path: configFile,
       size: stats.size,
@@ -852,7 +852,7 @@ ipcMain.handle('fs-write-file', async (event, filePath, data, encoding = 'utf8')
         console.warn('⚠️ 检查只读属性失败:', error.message)
       }
     }
-    
+
     await fs.writeFile(filePath, data, encoding)
     return true
   } catch (error) {
@@ -860,13 +860,54 @@ ipcMain.handle('fs-write-file', async (event, filePath, data, encoding = 'utf8')
   }
 })
 
+// ⚠️ Windows 文件操作重试辅助函数（解决杀毒软件/搜索索引锁文件问题）
+const writeFileWithRetry = async (filePath, data, maxRetries = 3) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await fs.writeFile(filePath, data)
+      return
+    } catch (error) {
+      const isLockError = error.code === 'EBUSY' || error.code === 'EPERM' || error.code === 'EACCES'
+      if (attempt < maxRetries && isLockError && process.platform === 'win32') {
+        const delay = 300 * attempt
+        console.warn(`⚠️ 文件写入被锁定 (${error.code})，${delay}ms 后重试 ${attempt}/${maxRetries}: ${path.basename(filePath)}`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      } else {
+        throw error
+      }
+    }
+  }
+}
+
+const deleteFileWithRetry = async (filePath, maxRetries = 3) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await fs.unlink(filePath)
+      console.log('✅ 已删除文件:', path.basename(filePath))
+      return true
+    } catch (error) {
+      if (error.code === 'ENOENT') return false
+      const isLockError = error.code === 'EBUSY' || error.code === 'EPERM' || error.code === 'EACCES'
+      if (attempt < maxRetries && isLockError && process.platform === 'win32') {
+        const delay = 300 * attempt
+        console.warn(`⚠️ 文件删除被锁定 (${error.code})，${delay}ms 后重试 ${attempt}/${maxRetries}: ${path.basename(filePath)}`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      } else {
+        console.warn(`⚠️ 文件删除最终失败 (${error.code}): ${path.basename(filePath)}`)
+        return false
+      }
+    }
+  }
+  return false
+}
+
 ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
   const startTime = Date.now()
-  
+
   try {
     // 使用 sql.js（纯 JavaScript 实现，无需编译，跨平台零问题）
     console.log('🗄️ SQLite 查询开始:', query.substring(0, 50))
-    
+
     // 动态加载 sql.js（支持打包后的路径）
     let initSqlJs
     try {
@@ -874,27 +915,20 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
       initSqlJs = require('sql.js')
     } catch (error) {
       // 如果失败，尝试从 unpacked 路径加载
-      const sqlJsPath = app.isPackaged 
+      const sqlJsPath = app.isPackaged
         ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js')
         : path.join(__dirname, '..', 'node_modules', 'sql.js')
       console.log('尝试从路径加载 sql.js:', sqlJsPath)
       initSqlJs = require(sqlJsPath)
     }
-    
+
     const SQL = await initSqlJs()
     console.log('✅ sql.js 模块加载成功')
-    
-    // 辅助函数：删除 WAL 和 SHM 文件
+
+    // 辅助函数：删除 WAL 和 SHM 文件（使用带重试的版本）
     const deleteWalFiles = async (basePath) => {
-      try {
-        await fs.unlink(`${basePath}-wal`)
-        console.log('✅ 已清理 WAL 文件')
-      } catch (e) { /* 忽略文件不存在错误 */ }
-      
-      try {
-        await fs.unlink(`${basePath}-shm`)
-        console.log('✅ 已清理 SHM 文件')
-      } catch (e) { /* 忽略文件不存在错误 */ }
+      await deleteFileWithRetry(`${basePath}-wal`)
+      await deleteFileWithRetry(`${basePath}-shm`)
     }
 
     // ⚠️ 关键修复：在读取数据库前，主动清理 WAL/SHM 文件
@@ -904,7 +938,7 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
     // 定义恢复函数
     const recoverDatabase = async (filePath) => {
       console.warn('⚠️ 正在执行数据库恢复流程...')
-      
+
       // 1. 尝试备份
       try {
         const backupPath = `${filePath}.corrupt.${Date.now()}`
@@ -915,7 +949,7 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
           console.error('❌ 备份损坏数据库失败:', backupError)
         }
       }
-      
+
       // 2. 删除损坏的主文件
       try {
         await fs.unlink(filePath)
@@ -925,10 +959,10 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
           console.warn('⚠️ 删除损坏数据库失败:', unlinkError)
         }
       }
-      
+
       // 3. 关键：删除关联的 WAL 和 SHM 文件
       await deleteWalFiles(filePath)
-      
+
       const newDb = new SQL.Database()
       // 确保基础表结构存在
       try {
@@ -943,7 +977,7 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
     // 读取数据库文件
     let db
     let buffer
-    
+
     try {
       buffer = await fs.readFile(dbPath)
       try {
@@ -951,9 +985,9 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
         console.log('✅ 数据库文件已加载到内存')
       } catch (dbError) {
         // 打开时检查损坏
-        if (dbError.message.includes('malformed') || 
-            dbError.message.includes('CORRUPT') || 
-            dbError.message.includes('unreadable')) {
+        if (dbError.message.includes('malformed') ||
+          dbError.message.includes('CORRUPT') ||
+          dbError.message.includes('unreadable')) {
           console.warn('⚠️ 打开时检测到数据库损坏:', dbError.message)
           db = await recoverDatabase(dbPath)
         } else {
@@ -967,14 +1001,14 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
         // 确保新库有表结构
         try {
           db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
-        } catch (e) {}
+        } catch (e) { }
       } else {
         throw readError
       }
     }
-    
+
     let result
-    
+
     // 执行查询的内部函数
     const executeQuery = (database, q, p) => {
       const qLower = q.toLowerCase().trim()
@@ -1002,52 +1036,61 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
         const execResult = executeQuery(db, query, params)
         result = execResult.data
         console.log(`✅ 查询执行成功 (${execResult.type})`)
-        
+
       } catch (queryError) {
         // 运行时检查损坏
-        if (queryError.message.includes('malformed') || 
-            queryError.message.includes('CORRUPT') || 
-            queryError.message.includes('unreadable')) {
-          
+        if (queryError.message.includes('malformed') ||
+          queryError.message.includes('CORRUPT') ||
+          queryError.message.includes('unreadable')) {
+
           console.warn('⚠️ 查询执行期间检测到数据库损坏:', queryError.message)
-          
+
           // 关闭旧连接
-          try { db.close() } catch(e) {}
-          
+          try { db.close() } catch (e) { }
+
           // 恢复数据库
           db = await recoverDatabase(dbPath)
-          
+
           console.log('🔄 正在重试查询...')
           // 在新数据库上重试
           const retryResult = executeQuery(db, query, params)
           result = retryResult.data
           console.log('✅ 重试查询成功')
-          
+
         } else {
           throw queryError
         }
       }
-        
+
       // 保存更改回文件（sql.js 是内存数据库）
       if (result && !query.toLowerCase().trim().startsWith('select')) {
+        // ⚠️ 仅 Windows：切换日志模式为 DELETE，防止 WAL 残留导致数据库损坏
+        // Mac 上 WAL 机制正常工作，不需要修改
+        if (process.platform === 'win32') {
+          try {
+            db.run("PRAGMA journal_mode=DELETE")
+          } catch (e) {
+            console.warn('⚠️ 切换 journal_mode 失败:', e.message)
+          }
+        }
+
         const data = db.export()
         const dataBuffer = Buffer.from(data)
-        await fs.writeFile(dbPath, dataBuffer)
-        
+        await writeFileWithRetry(dbPath, dataBuffer)
+
         // ⚠️ 关键：写入主文件后，必须清理旧的 WAL/SHM 文件
-        // 否则 Cursor 启动时会因为主文件与 WAL 不匹配而报错 SQLITE_CORRUPT
         await deleteWalFiles(dbPath)
-        
+
         console.log('✅ 数据库更改已保存到文件 (已清理 WAL/SHM)')
       }
-      
+
     } finally {
-      try { db.close() } catch(e) {}
+      try { db.close() } catch (e) { }
     }
-    
+
     const duration = Date.now() - startTime
     console.log(`✅ SQLite 查询总耗时: ${duration}ms`)
-    
+
     return result
   } catch (error) {
     console.error('❌ SQLite 查询错误:', error)
@@ -1058,12 +1101,100 @@ ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
   }
 })
 
+// SQLite 批量执行 - 单次文件读写完成多条 SQL（避免 Windows 文件锁竞态）
+ipcMain.handle('sqlite-batch-run', async (event, dbPath, statements) => {
+  const startTime = Date.now()
+  try {
+    console.log(`🗄️ SQLite 批量执行开始: ${statements.length} 条语句`)
+
+    let initSqlJs
+    try {
+      initSqlJs = require('sql.js')
+    } catch (error) {
+      const sqlJsPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js')
+        : path.join(__dirname, '..', 'node_modules', 'sql.js')
+      initSqlJs = require(sqlJsPath)
+    }
+    const SQL = await initSqlJs()
+
+    // 读取前清理 WAL/SHM（带重试）
+    await deleteFileWithRetry(`${dbPath}-wal`)
+    await deleteFileWithRetry(`${dbPath}-shm`)
+
+    let db
+    try {
+      const buffer = await fs.readFile(dbPath)
+      try {
+        db = new SQL.Database(buffer)
+      } catch (dbError) {
+        if (dbError.message.includes('malformed') || dbError.message.includes('CORRUPT')) {
+          console.warn('⚠️ 数据库损坏，尝试重建...')
+          try { await fs.copyFile(dbPath, `${dbPath}.corrupt.${Date.now()}`) } catch (e) { }
+          try { await deleteFileWithRetry(dbPath) } catch (e) { }
+          await deleteFileWithRetry(`${dbPath}-wal`)
+          await deleteFileWithRetry(`${dbPath}-shm`)
+          db = new SQL.Database()
+          db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        } else {
+          throw dbError
+        }
+      }
+    } catch (readError) {
+      if (readError.code === 'ENOENT') {
+        db = new SQL.Database()
+        db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+      } else {
+        throw readError
+      }
+    }
+
+    try {
+      const results = []
+      for (const stmt of statements) {
+        try {
+          db.run(stmt.sql, stmt.params || [])
+          results.push({ success: true, changes: db.getRowsModified() })
+        } catch (stmtError) {
+          console.error(`❌ 批量语句执行失败: ${stmtError.message}`)
+          results.push({ success: false, error: stmtError.message })
+        }
+      }
+
+      // ⚠️ 仅 Windows：切换日志模式为 DELETE，防止 WAL 文件残留导致损坏
+      // Mac 上 WAL 机制正常工作，不需要修改
+      if (process.platform === 'win32') {
+        try {
+          db.run("PRAGMA journal_mode=DELETE")
+        } catch (e) {
+          console.warn('⚠️ 切换 journal_mode 失败:', e.message)
+        }
+      }
+
+      const data = db.export()
+      const dataBuffer = Buffer.from(data)
+      await writeFileWithRetry(dbPath, dataBuffer)
+      await deleteFileWithRetry(`${dbPath}-wal`)
+      await deleteFileWithRetry(`${dbPath}-shm`)
+
+      const successCount = results.filter(r => r.success).length
+      console.log(`✅ SQLite 批量执行完成: ${Date.now() - startTime}ms, ${successCount}/${results.length} 成功`)
+      return { success: successCount > 0, results }
+    } finally {
+      try { db.close() } catch (e) { }
+    }
+  } catch (error) {
+    console.error('❌ SQLite 批量执行错误:', error)
+    throw new Error(`SQLite 批量错误: ${error.message}`)
+  }
+})
+
 ipcMain.handle('exec-command', async (event, command) => {
   try {
     const { exec } = require('child_process')
     const { promisify } = require('util')
     const execAsync = promisify(exec)
-    
+
     const result = await execAsync(command)
     return {
       stdout: result.stdout,
@@ -1087,9 +1218,9 @@ ipcMain.handle('exec-command', async (event, command) => {
 ipcMain.handle('exec-command-async', async (event, command) => {
   try {
     const { exec } = require('child_process')
-    
+
     console.log('🚀 异步执行命令:', command)
-    
+
     // 不等待命令完成，直接返回
     const child = exec(command, (error, stdout, stderr) => {
       if (error) {
@@ -1098,7 +1229,7 @@ ipcMain.handle('exec-command-async', async (event, command) => {
       if (stdout) console.log('📤 stdout:', stdout)
       if (stderr) console.log('📤 stderr:', stderr)
     })
-    
+
     return {
       success: true,
       pid: child.pid,
@@ -1117,9 +1248,9 @@ ipcMain.handle('exec-command-async', async (event, command) => {
 ipcMain.handle('spawn-detached', async (event, command, args = []) => {
   try {
     const { spawn } = require('child_process')
-    
+
     console.log('🚀 启动命令:', command, args)
-    
+
     let child
     if (process.platform === 'win32') {
       // Windows特殊处理：直接启动exe文件
@@ -1137,9 +1268,9 @@ ipcMain.handle('spawn-detached', async (event, command, args = []) => {
         shell: true
       })
     }
-    
+
     child.unref() // 让子进程独立运行
-    
+
     return {
       success: true,
       pid: child.pid,
@@ -1160,7 +1291,7 @@ ipcMain.handle('find-cursor-executable', async () => {
     const { exec } = require('child_process')
     const { promisify } = require('util')
     const execAsync = promisify(exec)
-    
+
     // 方法1: 通过正在运行的进程查找
     try {
       const result = await execAsync('powershell "Get-Process -Name Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 | Select-Object -ExpandProperty Path"', { timeout: 5000 })
@@ -1177,7 +1308,7 @@ ipcMain.handle('find-cursor-executable', async () => {
     } catch (e) {
       console.log('⚠️ 无法通过进程查找Cursor')
     }
-    
+
     // 方法2: 通过注册表查找
     try {
       const regResult = await execAsync('reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Cursor" 2>nul | findstr "DisplayIcon"', { timeout: 5000 })
@@ -1200,7 +1331,7 @@ ipcMain.handle('find-cursor-executable', async () => {
     } catch (e) {
       console.log('⚠️ 无法通过注册表查找Cursor')
     }
-    
+
     // 方法3: 在常见安装位置搜索
     const commonPaths = [
       'C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Cursor\\Cursor.exe',
@@ -1210,15 +1341,15 @@ ipcMain.handle('find-cursor-executable', async () => {
       'E:\\Cursor\\Cursor.exe',
       'F:\\Cursor\\Cursor.exe'
     ]
-    
+
     const homeDir = os.homedir()
     const username = process.env.USERNAME || process.env.USER || 'User'
-    
+
     for (let commonPath of commonPaths) {
       // 展开环境变量
       commonPath = commonPath.replace('%USERNAME%', username)
       commonPath = commonPath.replace('~', homeDir)
-      
+
       try {
         await fs.access(commonPath)
         console.log('✅ 在常见位置找到Cursor路径:', commonPath)
@@ -1227,7 +1358,7 @@ ipcMain.handle('find-cursor-executable', async () => {
         // 继续搜索
       }
     }
-    
+
     // 方法4: 在整个系统中搜索 Cursor.exe
     try {
       const searchResult = await execAsync('powershell "Get-ChildItem -Path C:\\ -Recurse -Name \'Cursor.exe\' -ErrorAction SilentlyContinue | Select-Object -First 3"', { timeout: 15000 })
@@ -1245,7 +1376,7 @@ ipcMain.handle('find-cursor-executable', async () => {
     } catch (e) {
       console.log('⚠️ 全局搜索失败')
     }
-    
+
     return { success: false, error: '未找到Cursor可执行文件' }
   } catch (error) {
     return { success: false, error: error.message }
@@ -1256,7 +1387,7 @@ ipcMain.handle('find-cursor-executable', async () => {
 ipcMain.handle('find-cursor-db', async () => {
   try {
     const homeDir = os.homedir()
-    
+
     // 可能的Cursor数据库路径
     const possiblePaths = [
       // Windows路径
@@ -1264,21 +1395,21 @@ ipcMain.handle('find-cursor-db', async () => {
       path.join(homeDir, 'AppData', 'Local', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
       path.join(homeDir, 'AppData', 'Roaming', 'cursor', 'User', 'globalStorage', 'state.vscdb'),
       path.join(homeDir, 'AppData', 'Local', 'cursor', 'User', 'globalStorage', 'state.vscdb'),
-      
+
       // 其他可能的路径
       path.join(homeDir, '.cursor', 'User', 'globalStorage', 'state.vscdb'),
       path.join(homeDir, '.config', 'cursor', 'User', 'globalStorage', 'state.vscdb'),
-      
+
       // macOS路径
       path.join(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
       path.join(homeDir, 'Library', 'Application Support', 'cursor', 'User', 'globalStorage', 'state.vscdb'),
-      
+
       // Linux路径
       path.join(homeDir, '.config', 'Cursor', 'User', 'globalStorage', 'state.vscdb')
     ]
-    
+
     const foundPaths = []
-    
+
     for (const dbPath of possiblePaths) {
       try {
         await fs.access(dbPath)
@@ -1293,7 +1424,7 @@ ipcMain.handle('find-cursor-db', async () => {
         // 文件不存在，跳过
       }
     }
-    
+
     // 也尝试通过搜索找到所有的state.vscdb文件
     try {
       let searchCommand
@@ -1304,14 +1435,14 @@ ipcMain.handle('find-cursor-db', async () => {
       } else {
         searchCommand = `find "${homeDir}" -name "state.vscdb" 2>/dev/null`
       }
-      
+
       const { exec } = require('child_process')
       const { promisify } = require('util')
       const execAsync = promisify(exec)
-      
+
       const result = await execAsync(searchCommand)
       const searchResults = result.stdout.split('\n').filter(line => line.trim())
-      
+
       for (const foundPath of searchResults) {
         if (foundPath.trim() && !foundPaths.some(p => p.path === foundPath.trim())) {
           try {
@@ -1331,7 +1462,7 @@ ipcMain.handle('find-cursor-db', async () => {
     } catch (searchError) {
       console.log('搜索命令失败:', searchError.message)
     }
-    
+
     return {
       success: true,
       foundPaths: foundPaths,
@@ -1391,7 +1522,7 @@ ipcMain.handle('read-log-file', async (event, lines = 100) => {
     const content = await fs.readFile(logFile, 'utf8')
     const allLines = content.split('\n')
     const recentLines = allLines.slice(-lines).join('\n')
-    
+
     return {
       success: true,
       content: recentLines,
@@ -1423,7 +1554,7 @@ ipcMain.handle('clear-log-file', async () => {
 ipcMain.handle('get-cursor-version', async () => {
   try {
     console.log('🔍 正在获取 Cursor 版本号...')
-    
+
     // 方法1: 通过命令行获取版本号
     try {
       const result = await execAsync('cursor --version', { timeout: 5000 })
@@ -1440,7 +1571,7 @@ ipcMain.handle('get-cursor-version', async () => {
     } catch (cmdError) {
       console.log('⚠️ 命令行方式失败:', cmdError.message)
     }
-    
+
     // 方法2: 通过可执行文件路径查找 package.json
     try {
       // 先找到 Cursor 可执行文件（通过正在运行的进程）
@@ -1451,10 +1582,10 @@ ipcMain.handle('get-cursor-version', async () => {
       } catch (e) {
         console.log('⚠️ 无法通过进程查找 Cursor 路径')
       }
-      
+
       if (cursorPath && cursorPath !== '') {
         const cursorDir = path.dirname(cursorPath)
-        
+
         // 尝试多个可能的 package.json 路径
         const possiblePackagePaths = [
           path.join(cursorDir, 'resources', 'app', 'package.json'),
@@ -1462,7 +1593,7 @@ ipcMain.handle('get-cursor-version', async () => {
           path.join(cursorDir, 'package.json'),
           path.join(cursorDir, '..', 'resources', 'app', 'package.json')
         ]
-        
+
         for (const packagePath of possiblePackagePaths) {
           try {
             const packageData = await fs.readFile(packagePath, 'utf8')
@@ -1479,7 +1610,7 @@ ipcMain.handle('get-cursor-version', async () => {
     } catch (fileError) {
       console.log('⚠️ 文件方式失败:', fileError.message)
     }
-    
+
     // 方法3: 通过注册表获取版本信息 (Windows)
     if (process.platform === 'win32') {
       try {
@@ -1499,10 +1630,10 @@ ipcMain.handle('get-cursor-version', async () => {
         console.log('⚠️ 注册表方式失败:', regError.message)
       }
     }
-    
+
     console.log('⚠️ 无法获取 Cursor 版本号')
     return { success: false, error: '未能获取版本信息', version: '未知' }
-    
+
   } catch (error) {
     console.error('❌ 获取 Cursor 版本号失败:', error)
     return { success: false, error: error.message, version: '未知' }
@@ -1518,7 +1649,7 @@ ipcMain.handle('unlock-file', async (event, filePath) => {
     }
 
     await writeLog('INFO', `尝试解锁文件: ${filePath}`)
-    
+
     // 使用 handle.exe 工具或简单的重命名技巧
     // 方法1: 尝试重命名文件（如果被锁定会失败）
     const tempPath = filePath + '.unlocking'
@@ -1530,7 +1661,7 @@ ipcMain.handle('unlock-file', async (event, filePath) => {
     } catch (error) {
       console.log('⚠️ 重命名方法失败，文件可能仍被锁定')
     }
-    
+
     // 方法2: 尝试复制+删除（强制）
     try {
       const backup = filePath + '.locked.backup'
@@ -1557,11 +1688,11 @@ ipcMain.handle('update-windows-registry', async (event, keyPath, valueName, valu
     }
 
     await writeLog('INFO', `准备更新注册表: ${keyPath}\\${valueName}`)
-    
+
     // 使用reg add命令更新注册表
     // /f 参数强制覆盖现有值,不需要确认
     const command = `reg add "${keyPath}" /v "${valueName}" /t REG_SZ /d "${value}" /f`
-    
+
     try {
       const result = await execAsync(command)
       await writeLog('INFO', `注册表更新成功: ${keyPath}\\${valueName}`)
@@ -1596,7 +1727,7 @@ ipcMain.handle('read-windows-registry', async (event, keyPath, valueName) => {
     }
 
     const command = `reg query "${keyPath}" /v "${valueName}"`
-    
+
     try {
       const result = await execAsync(command)
       // 解析reg query的输出
@@ -1635,10 +1766,10 @@ ipcMain.handle('read-windows-registry', async (event, keyPath, valueName) => {
 ipcMain.handle('get-mac-address', async () => {
   try {
     const networkInterfaces = os.networkInterfaces()
-    
+
     // 优先查找物理网卡的MAC地址
     const priorityInterfaces = ['以太网', 'Ethernet', 'Wi-Fi', 'WiFi', 'WLAN', 'en0', 'eth0']
-    
+
     for (const interfaceName of priorityInterfaces) {
       const networkInterface = networkInterfaces[interfaceName]
       if (networkInterface) {
@@ -1650,7 +1781,7 @@ ipcMain.handle('get-mac-address', async () => {
         }
       }
     }
-    
+
     // 如果优先接口没找到，遍历所有接口
     for (const [interfaceName, networkInterface] of Object.entries(networkInterfaces)) {
       if (networkInterface) {
@@ -1662,7 +1793,7 @@ ipcMain.handle('get-mac-address', async () => {
         }
       }
     }
-    
+
     // 备用方案：使用系统命令获取
     if (process.platform === 'win32') {
       try {
@@ -1702,10 +1833,10 @@ ipcMain.handle('get-mac-address', async () => {
         console.warn('命令行获取MAC地址失败:', cmdError.message)
       }
     }
-    
+
     console.warn('无法获取MAC地址')
     return 'unknown'
-    
+
   } catch (error) {
     console.error('获取MAC地址时发生错误:', error)
     return 'unknown'
