@@ -77,101 +77,93 @@
       <!-- 主内容区域 -->
       <div class="main-content">
         <div class="content-grid">
-          <!-- 左侧：授权码输入区域 -->
+          <!-- 左侧：授权激活与说明 -->
           <div class="left-panel">
-            <el-card class="license-card" shadow="hover">
-              <div class="card-header">
-                <div class="step-number">1</div>
-                <div class="card-title">
-                  <h3>输入授权码</h3>
-                  <p>点击右上角设置按钮输入授权码，验证通过后即可使用续杯功能。</p>
+            <el-card class="left-main-card" shadow="hover">
+              <!-- FAQ 入口 -->
+              <div class="faq-integrated-entry" @click="openFaqUrl">
+                <el-icon class="icon-pulse"><QuestionFilled /></el-icon>
+                <div class="faq-text">
+                  <span class="label">常见问题与报错指南</span>
+                  <span class="desc">遇到问题点击这里，解决 99% 的常见报错</span>
                 </div>
+                <el-icon class="arrow"><ArrowRight /></el-icon>
               </div>
-              
-              <div class="license-input-section">
-                <el-input
-                  v-model="licenseCode"
-                  placeholder="请输入授权码"
-                  size="large"
-                  :disabled="loading.license"
-                  @keyup.enter="validateLicense"
 
-                >
-                  <template #append>
-                    <el-button
-                      type="primary"
-                      @click="validateLicense"
-                      :loading="loading.license"
-                      :disabled="!licenseCode.trim()"
-                    >
-                      验证
-                    </el-button>
-                  </template>
-                </el-input>
-              </div>
-              
-              <!-- 购买授权码区域 -->
-              <div class="purchase-section">
-                <div class="purchase-info">
-                  <div class="purchase-text">
-                    <p class="purchase-title">🎯 没有授权码？</p>
-                    <p class="purchase-desc">点击下方按钮购买授权码</p>
-                  </div>
+              <div class="divider-line"></div>
+
+              <!-- 授权码激活区 -->
+              <div class="activation-section">
+                <div class="section-header-compact">
+                  <div class="step-dot">1</div>
+                  <h3>输入授权码激活</h3>
                 </div>
-                <div class="purchase-actions">
+                
+                <div class="input-container">
+                  <el-input
+                    v-model="licenseCode"
+                    placeholder="请输入授权码"
+                    size="large"
+                    :disabled="loading.license"
+                    @keyup.enter="validateLicense"
+                  >
+                    <template #append>
+                      <el-button
+                        type="primary"
+                        @click="validateLicense"
+                        :loading="loading.license"
+                      >
+                        验证
+                      </el-button>
+                    </template>
+                  </el-input>
+                </div>
+
+                <div class="premium-button-wrapper">
                   <el-button
                     type="warning"
                     size="large"
                     @click="openPurchasePage"
                     :loading="loading.purchase"
-                    class="purchase-button"
+                    class="premium-purchase-btn"
                   >
-                    <span v-if="loading.purchase">正在打开...</span>
-                    <span v-else>🛒 购买授权码</span>
+                    <el-icon><ShoppingCart /></el-icon>
+                    <span>立即购买授权码</span>
                   </el-button>
+                  <p class="guide-tip">验证成功后，点击右侧“一键续杯”即可换号</p>
                 </div>
               </div>
-            </el-card>
 
-            <el-card class="license-card" shadow="hover">
+              <div class="divider-line"></div>
 
-              <div class="card-header">
-                <div class="step-number">2</div>
-                <div class="card-title">
-                  <h3>刷新CURSSOR</h3>
-                  <p>点击一键续杯可切换新账号，恶意点击直接封禁！</p>
+              <!-- 使用须知/系统公告 -->
+              <div class="instructions-section">
+                <div class="section-header-compact">
+                  <el-icon><InfoFilled /></el-icon>
+                  <h3>使用须知</h3>
                 </div>
-              </div>
-            </el-card>
-
-            <!-- 系统公告 -->
-            <el-card 
-              v-for="notice in systemNotices" 
-              :key="notice.id"
-              :class="['notice-card', `notice-${notice.noticeType}`]" 
-              shadow="never"
-            >
-              <div class="notice-content">
-                <el-icon class="notice-icon" size="20">
-                  <Warning v-if="notice.noticeType === 'warning'" />
-                  <InfoFilled v-else-if="notice.noticeType === 'info'" />
-                  <SuccessFilled v-else-if="notice.noticeType === 'success'" />
-                  <CircleCloseFilled v-else-if="notice.noticeType === 'error'" />
-                  <Warning v-else />
-                </el-icon>
-                <div class="notice-text">
-                  <strong>{{ notice.title }}</strong>
-                  <p>{{ notice.content }}</p>
-                  <div class="notice-date">{{ notice.createdTime }}</div>
+                <div class="notices-list">
+                  <div 
+                    v-for="notice in systemNotices.slice(0, 3)" 
+                    :key="notice.id"
+                    :class="['notice-item-compact', `type-${notice.noticeType}`]"
+                  >
+                    <span class="notice-title">{{ notice.title }}</span>
+                    <p class="notice-msg">{{ notice.content }}</p>
+                  </div>
+                  <div class="static-instruction" v-if="!systemNotices.length">
+                    <p>1. 请确保您的卡密在有效期内</p>
+                    <p>2. 如遇续杯失败，请尝试重新登录 Cursor 账号（登录一次自己的账号）</p>
+                    <p>3. 遇到技术问题请联系客服 QQ: 522660570</p>
+                  </div>
                 </div>
               </div>
             </el-card>
           </div>
 
-          <!-- 右侧：功能区域 -->
+          <!-- 右侧：状态显示与续杯按钮 -->
           <div class="right-panel">
-            <!-- 当前账号情况 -->
-            <div class="account-status-section">
+            <el-card class="right-main-card" shadow="hover">
               <div class="status-grid">
                 <div class="status-item-grid">
                   <span class="status-label-grid">当前授权状态</span>
@@ -183,7 +175,7 @@
                     >
                       {{ licenseStatus.statusText }}
                     </el-tag>
-                    <!-- 调试按钮 -->
+                    <!-- 刷新按钮 -->
                     <el-button 
                       type="text" 
                       size="small" 
@@ -215,10 +207,7 @@
                   </div>
                 </div>
 
-                <div class="status-item-grid">
-                  <span class="status-label-grid">会员类型</span>
-                  <span class="status-value" :class="membershipClass">{{ membershipType }}</span>
-                </div>
+
 
                 <div class="status-item-grid">
                   <span class="status-label-grid">到期时间</span>
@@ -233,7 +222,7 @@
                 </div>
                 <div class="account-details">
                   <div class="account-item">
-                    <span class="account-label">邮箱：</span>
+                    <span class="account-label">邮箱</span>
                     <span v-if="currentAccount.loading" class="account-value loading">
                       <el-icon class="is-loading"><Loading /></el-icon>
                       正在获取...
@@ -243,94 +232,50 @@
                     </span>
                     <span v-else class="account-value no-account">未检测到登录账号</span>
                   </div>
-                  <div class="account-status-tags">
-                    <el-tag 
-                      :type="currentAccount.isAuthenticated ? 'success' : 'danger'" 
-                      size="small"
-                    >
-                      {{ currentAccount.isAuthenticated ? '已认证' : '未认证' }}
-                    </el-tag>
-                    <el-tag 
-                      :type="currentAccount.hasAccessToken ? 'success' : 'warning'" 
-                      size="small"
-                      style="margin-left: 8px;"
-                    >
-                      {{ currentAccount.hasAccessToken ? 'Token有效' : 'Token无效' }}
-                    </el-tag>
+                  <div class="account-item">
+                    <span class="account-label">今日换号次数</span>
+                    <span class="account-value switch-count">{{ todaySwitchCount }} 次</span>
                   </div>
                 </div>
-
               </div>
-              <!-- 卡密有效期信息 -->
+
+              <!-- 卡密有效进度 -->
               <div class="current-account-info">
                 <h4>卡密有效期</h4>
                 <div class="validity-grid">
                   <div class="validity-item">
-                    <span class="validity-label">
-                      {{ licenseData?.cardType === 2 ? '剩余次数：' : '剩余天数：' }}
-                    </span>
-                    <span class="validity-value days-remaining">{{ daysRemaining }}</span>
+                    <span class="validity-label">{{ licenseData?.cardType === 2 ? '剩余次数' : '剩余天数' }}</span>
+                    <span class="validity-value">{{ daysRemaining }}</span>
                   </div>
                   <div class="validity-item">
-                    <span class="validity-label">
-                      {{ licenseData?.cardType === 2 ? '总次数：' : '总有效期：' }}
-                    </span>
+                    <span class="validity-label">{{ licenseData?.cardType === 2 ? '总共次数' : '总有效期' }}</span>
                     <span class="validity-value">{{ totalDays }}</span>
                   </div>
                 </div>
                 <div class="progress-section">
-                  <div class="progress-info">
-                    <span>{{ usagePercentage }}%</span>
-                  </div>
-                  <el-progress
-                      :percentage="usagePercentage"
-                      :color="progressColor"
-                      :show-text="false"
-                  />
+                  <div class="progress-info"><span>{{ usagePercentage }}%</span></div>
+                  <el-progress :percentage="usagePercentage" :color="progressColor" :show-text="false" />
                 </div>
               </div>
-              <br></br>
-              <!-- 一键续杯操作区域 -->
-              <div class="actions-section">
+
+              <!-- 一键续杯大按钮 -->
+              <div class="renewal-container">
                 <el-button
-                          type="success"
-                          size="large"
-                          :icon="MagicStick"
-                          @click="renewPro"
-                          :loading="loading.operations"
-                          class="renewal-button"
-                          :disabled="!isLicenseValid"
-                      >
-                        <span v-if="loading.operations">正在续杯中...</span>
-                        <span v-else>🚀 一键续杯</span>
-                      </el-button>
-               </div>
-             </div>
-
-<!--
-             &lt;!&ndash; 调试和诊断区域 &ndash;&gt;
-             <div class="debug-section">
-               <el-card class="debug-card" shadow="hover">
-                 <div class="debug-header">
-                   <h4>🔧 系统诊断</h4>
-                   <p>如果遇到问题，点击诊断按钮查看详细信息</p>
-                 </div>
-                 <div class="debug-actions">
-                   <el-button 
-                     type="info" 
-                     size="default"
-                     @click="diagnoseCursorPaths"
-                     :loading="loading.diagnosis"
-                   >
-                     {{ loading.diagnosis ? '诊断中...' : '🔍 诊断Cursor路径' }}
-                   </el-button>
-                 </div>
-               </el-card>
-             </div>
--->
-
-           </div>
-         </div>
+                  type="success"
+                  size="large"
+                  @click="renewPro"
+                  :loading="loading.operations"
+                  class="renewal-button"
+                  :disabled="!isLicenseValid"
+                >
+                  <el-icon v-if="!loading.operations"><MagicStick /></el-icon>
+                  <span v-if="loading.operations">正在续杯中...</span>
+                  <span v-else>一键续杯</span>
+                </el-button>
+              </div>
+            </el-card>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -339,7 +284,6 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Setting, Warning, Loading, MagicStick, InfoFilled, SuccessFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 
 import CursorService from './services/CursorService'
 import AccountService from './services/AccountService'
@@ -350,18 +294,11 @@ import VersionService from './services/VersionService'
 import CustomTitleBar from './components/CustomTitleBar.vue'
 import MachineIdDebug from './components/MachineIdDebug.vue'
 import { getDefaultPurchaseUrl, getPurchaseMessage } from './config/purchase.js'
-import { API_CONFIG, getApiUrl, APP_VERSION, MIN_REQUIRED_VERSION, versionHeaders } from './config/api.js'
+import { API_CONFIG, getApiUrl, APP_VERSION } from './config/api.js'
 
 export default {
   name: 'App',
   components: {
-    Setting,
-    Warning,
-    Loading,
-    MagicStick,
-    InfoFilled,
-    SuccessFilled,
-    CircleCloseFilled,
     CustomTitleBar,
     MachineIdDebug
   },
@@ -370,30 +307,30 @@ export default {
     const licenseCode = ref('')
     const licenseData = ref(null)
     const systemNotices = ref([])
-    const debugMode = ref(false) // 调试模式开关
-    const showDebugPanel = ref(false) // 调试面板显示状态
-    const showPathDialog = ref(false) // 路径配置对话框显示状态
-    const cursorExecutablePath = ref('') // 手动配置的 Cursor.exe 路径
+    const debugMode = ref(false)
+    const showDebugPanel = ref(false)
+    const showPathDialog = ref(false)
+    const faqUrl = ref('https://www.yuque.com/u65041907/qqq1xv/esbwnffw2qt4sfof?singleDoc# 《常见问题》')
+    const cursorExecutablePath = ref('')
+    const cursorEditorVersion = ref('未知')
+    const appVersion = ref(APP_VERSION || '1.7.1')
     
     const loading = reactive({
       license: false,
       refresh: false,
       operations: false,
       purchase: false,
-      pathSelection: false
+      pathSelection: false,
+      diagnosis: false
     })
 
-    // 当前Cursor账号状态
     const currentAccount = reactive({
       loading: false,
       email: null,
-      signUpType: null,
       isAuthenticated: false,
-      hasAccessToken: false,
-      hasRefreshToken: false
+      hasAccessToken: false
     })
 
-    // 🔧 服务实例
     const cursorService = new CursorService()
     const accountService = new AccountService()
     const licenseService = new LicenseService()
@@ -402,1449 +339,491 @@ export default {
     const versionService = new VersionService()
 
     // 🔧 计算属性
-    const licenseStatus = computed(() => {
-      console.log('🔄 计算licenseStatus, licenseData.value:', licenseData.value)
-      return licenseService.formatLicenseStatus(licenseData.value)
-    })
-
-    const isLicenseValid = computed(() => {
-      if (!licenseData.value) {
-        return false
-      }
-      const result = licenseData.value.status === 'valid'
-      console.log('🔄 计算isLicenseValid:', {
-        status: licenseData.value.status,
-        cardType: licenseData.value.cardType,
-        result: result
-      })
-      return result
-    })
-
-    // 🔧 读取应用配置（包括手动配置的 Cursor 路径）
-    const loadAppConfig = async () => {
-      try {
-        if (typeof window === 'undefined' || !window.electronAPI || !window.electronAPI.readConfigFile) {
-          return
-        }
-        const rawConfig = await window.electronAPI.readConfigFile()
-        if (!rawConfig) {
-          return
-        }
-        let config
-        try {
-          config = JSON.parse(rawConfig)
-        } catch (error) {
-          console.warn('⚠️ 配置文件格式异常，已忽略:', error.message)
-          return
-        }
-        if (config.cursorExecutablePath && typeof config.cursorExecutablePath === 'string') {
-          cursorExecutablePath.value = config.cursorExecutablePath
-        }
-      } catch (error) {
-        console.warn('⚠️ 读取配置文件失败:', error.message)
-      }
-    }
-
-    // 🔧 选择 Cursor 路径
-    const selectCursorPath = async () => {
-      try {
-        if (!window.electronAPI || !window.electronAPI.openFileDialog) {
-          ElMessage.error('当前环境不支持文件选择')
-          return
-        }
-
-        loading.pathSelection = true
-
-        const result = await window.electronAPI.openFileDialog({
-          title: '选择 Cursor.exe 文件',
-          filters: [
-            { name: 'Cursor 可执行文件', extensions: ['exe'] },
-            { name: '快捷方式', extensions: ['lnk'] },
-            { name: '所有文件', extensions: ['*'] }
-          ],
-          buttonLabel: '选择'
-        })
-
-        if (result.success && result.filePath) {
-          // 如果选择的是快捷方式，提示用户需要选择实际的 exe 文件
-          if (result.filePath.toLowerCase().endsWith('.lnk')) {
-            ElMessage.warning('请选择 Cursor.exe 文件，而不是快捷方式')
-            return
-          }
-
-          // 验证文件是否存在
-          const exists = await window.electronAPI.fsAccess(result.filePath)
-          if (!exists) {
-            ElMessage.error('选择的文件不存在或无法访问')
-            return
-          }
-
-          // 保存到配置
-          cursorExecutablePath.value = result.filePath
-
-          let rawConfig = await window.electronAPI.readConfigFile()
-          let config = {}
-          if (rawConfig) {
-            try {
-              config = JSON.parse(rawConfig)
-            } catch (error) {
-              console.warn('⚠️ 原有配置解析失败，将重新生成配置文件:', error.message)
-              config = {}
-            }
-          }
-
-          config.cursorExecutablePath = result.filePath
-
-          await window.electronAPI.writeConfigFile(JSON.stringify(config, null, 2))
-          ElMessage.success('✅ Cursor 路径设置成功！')
-          showPathDialog.value = false
-        } else if (result.canceled) {
-          console.log('用户取消了文件选择')
-        }
-      } catch (error) {
-        console.error('❌ 选择文件失败:', error)
-        ElMessage.error('选择文件失败: ' + error.message)
-      } finally {
-        loading.pathSelection = false
-      }
-    }
-
-    // 🔧 清除 Cursor 路径
-    const clearCursorPath = async () => {
-      try {
-        if (!window.electronAPI || !window.electronAPI.writeConfigFile) {
-          ElMessage.error('当前环境不支持清除配置')
-          return
-        }
-
-        let rawConfig = await window.electronAPI.readConfigFile()
-        let config = {}
-        if (rawConfig) {
-          try {
-            config = JSON.parse(rawConfig)
-          } catch (error) {
-            config = {}
-          }
-        }
-
-        delete config.cursorExecutablePath
-        cursorExecutablePath.value = ''
-
-        await window.electronAPI.writeConfigFile(JSON.stringify(config, null, 2))
-        ElMessage.success('✅ 已清除手动配置的路径，将使用自动检测')
-        showPathDialog.value = false
-      } catch (error) {
-        console.error('❌ 清除路径失败:', error)
-        ElMessage.error('清除路径失败: ' + error.message)
-      }
-    }
-
-    // 获取软件版本号（自动从 package.json 读取）
-    const appVersion = ref(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.0')
+    const cursorVersion = computed(() => appVersion.value)
+    const licenseStatus = computed(() => licenseService.formatLicenseStatus(licenseData.value))
+    const isLicenseValid = computed(() => licenseData.value?.status === 'valid')
+    const expiryTime = computed(() => licenseData.value?.cardType === 2 ? '无期限' : (licenseData.value?.expiryDate || '未激活'))
+    const expiryClass = computed(() => isLicenseValid.value ? 'text-success' : 'text-danger')
     
-    // 获取 Cursor 版本号
-    const cursorEditorVersion = ref('未知')
-    
-    const cursorVersion = computed(() => {
-      return appVersion.value
-    })
-
-    const membershipType = computed(() => {
-      if (!licenseData.value) return '未授权'
-      return licenseData.value.licenseType || 'Pro'
-    })
-
-    const membershipClass = computed(() => {
-      if (!licenseData.value) return 'text-danger'
-      return licenseData.value.status === 'valid' ? 'text-success' : 'text-danger'
-    })
-
-    const expiryTime = computed(() => {
-      if (!licenseData.value) return '未授权'
-      
-      // 次卡没有到期时间（2=次卡）
-      if (licenseData.value.cardType === 2) {
-        return '无期限（次数限制）'
-      }
-      
-      return licenseData.value.expiryDate || '未授权'
-    })
-
-    const expiryClass = computed(() => {
-      if (!licenseData.value) return 'text-danger'
-      
-      // 次卡：根据剩余次数判断颜色（2=次卡）
-      if (licenseData.value.cardType === 2) {
-        const { remainingSwitches = 0, totalSwitches = 1 } = licenseData.value
-        const percentage = (remainingSwitches / totalSwitches) * 100
-        if (percentage > 50) return 'text-success'
-        if (percentage > 0) return 'text-warning'
-        return 'text-danger'
-      }
-      
-      // 天卡：根据剩余天数判断颜色
-      const { daysRemaining } = licenseData.value
-      if (daysRemaining > 7) return 'text-success'
-      if (daysRemaining > 0) return 'text-warning'
-      return 'text-danger'
-    })
-
     const daysRemaining = computed(() => {
       if (!licenseData.value) return '---'
-      
-      // 次卡：显示剩余次数（2=次卡）
-      if (licenseData.value.cardType === 2) {
-        const remaining = licenseData.value.remainingSwitches || 0
-        return remaining > 0 ? `${remaining}次` : '已用完'
-      }
-      
-      // 天卡：显示剩余天数
-      const days = licenseData.value.daysRemaining || 0
-      return days > 0 ? `${days}天` : '已过期'
+      return licenseData.value.cardType === 2 ? ` ${licenseData.value.remainingSwitches} 次` : ` ${licenseData.value.daysRemaining} 天`
     })
 
     const totalDays = computed(() => {
       if (!licenseData.value) return '---'
-      
-      // 次卡：显示总次数（2=次卡）
-      if (licenseData.value.cardType === 2) {
-        return `${licenseData.value.totalSwitches || 0}次`
-      }
-      
-      // 天卡：显示总天数
-      return `${licenseData.value.totalDays || 30}天`
+      return licenseData.value.cardType === 2 ? ` ${licenseData.value.totalSwitches} 次` : ` ${licenseData.value.totalDays} 天`
     })
 
     const usagePercentage = computed(() => {
       if (!licenseData.value) return 0
-      
-      // 如果后端已经计算了使用百分比，直接使用
-      if (licenseData.value.usagePercentage !== undefined) {
-        return licenseData.value.usagePercentage
-      }
-      
-      // 次卡：根据使用次数计算百分比（2=次卡）
       if (licenseData.value.cardType === 2) {
-        const { usedSwitches = 0, totalSwitches = 1 } = licenseData.value
-        return Math.round((usedSwitches / totalSwitches) * 100)
+        return Math.round(((licenseData.value.usedSwitches || 0) / (licenseData.value.totalSwitches || 1)) * 100)
       }
-      
-      // 天卡：根据剩余天数计算百分比
-      const { daysRemaining = 0, totalDays = 30 } = licenseData.value
-      const usedDays = Math.max(0, totalDays - daysRemaining)
-      return Math.round((usedDays / totalDays) * 100)
+      const usedDays = Math.max(0, (licenseData.value.totalDays || 30) - (licenseData.value.daysRemaining || 0))
+      return Math.round((usedDays / (licenseData.value.totalDays || 30)) * 100)
     })
 
     const progressColor = computed(() => {
-      const percentage = usagePercentage.value
-      if (percentage < 50) return '#67c23a'
-      if (percentage < 80) return '#e6a23c'
-      return '#f56c6c'
+      const p = usagePercentage.value
+      return p < 50 ? '#67c23a' : (p < 80 ? '#e6a23c' : '#f56c6c')
     })
 
-    // 🔧 验证授权码
-    const validateLicense = async () => {
-      if (!licenseCode.value.trim()) {
-        ElMessage.warning('请输入授权码')
-        return
-      }
+    const todaySwitchCount = computed(() => licenseData.value?.todaySwitchCount || 0)
 
+    // 🔧 业务逻辑
+    const openFaqUrl = () => {
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(faqUrl.value)
+      } else {
+        window.open(faqUrl.value, '_blank')
+      }
+    }
+
+    const openPurchasePage = () => {
+      const url = getDefaultPurchaseUrl()
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(url)
+      } else {
+        window.open(url, '_blank')
+      }
+    }
+
+    const validateLicense = async () => {
+      if (!licenseCode.value.trim()) return ElMessage.warning('请输入授权码')
       loading.license = true
       try {
-        console.log('🔧 开始验证授权码:', licenseCode.value)
         const result = await licenseService.validateLicense(licenseCode.value)
-        
         if (result.success) {
-          // 强制更新响应式数据
-          licenseData.value = { ...result.data }
-          
-          // 🔧 保存授权码和状态到缓存
+          licenseData.value = result.data
           await storageService.saveLicenseCode(licenseCode.value)
-          await storageService.saveLicenseData(result.data)
-          console.log('💾 授权码和状态已缓存')
-          console.log('🔄 验证后licenseData.value:', licenseData.value)
-          
-          // 强制触发响应式更新
-          await new Promise(resolve => setTimeout(resolve, 50))
-          
-          if (result.data.status === 'valid') {
-            // 根据授权码类型显示不同的成功消息（2=次卡）
-            if (result.data.cardType === 2) {
-              ElMessage.success(`✅ 次卡验证成功！剩余${result.data.remainingSwitches}次换号机会`)
-            } else {
-              ElMessage.success(`✅ 天卡验证成功！剩余${result.data.daysRemaining}天`)
-            }
-          } else if (result.data.status === 'expired') {
-            if (result.data.cardType === 2) {
-              ElMessage.error(`❌ 次卡已用完！已使用${result.data.usedSwitches}次`)
-            } else {
-              ElMessage.error(`❌ 天卡已过期！过期时间：${result.data.expiryDate}`)
-            }
-          } else if (result.data.status === 'unactivated') {
-            ElMessage.success(`✅ 授权码有效！${result.data.message}`)
-          } else {
-            ElMessage.error('❌ 授权码无效！')
-          }
+          ElMessage.success('✅ 授权码验证成功')
         } else {
-          ElMessage.error('验证失败: ' + result.error)
-          licenseData.value = null
+          ElMessage.error('❌ ' + result.error)
         }
-      } catch (error) {
-        console.error('❌ 验证授权码出错:', error)
-        ElMessage.error('验证授权码出错: ' + error.message)
-        licenseData.value = null
+      } catch (e) {
+        ElMessage.error('验证出错: ' + e.message)
       } finally {
         loading.license = false
       }
     }
 
-    // 🔧 刷新Cursor
-    const refreshCursor = async () => {
-      if (!isLicenseValid.value) {
-        ElMessage.warning('请先验证有效的授权码')
-        return
-      }
-
-      try {
-        await ElMessageBox.confirm(
-          '刷新Cursor将关闭当前运行的Cursor并重新启动，确定要继续吗？',
-          '确认刷新Cursor',
-          {
-            confirmButtonText: '确定刷新',
-            cancelButtonText: '取消',
-            type: 'info'
-          }
-        )
-
-        loading.refresh = true
-        ElMessage.info('正在刷新Cursor...')
-
-        // 1. 关闭Cursor
-        console.log('🔧 步骤1: 关闭Cursor')
-        const killResult = await cursorService.killCursorProcess()
-        if (killResult.success) {
-          console.log('✅ Cursor进程已关闭')
-        } else {
-          console.warn('⚠️ Cursor进程关闭可能不完整:', killResult.error)
-        }
-
-        // 2. 等待进程完全关闭
-        console.log('🔧 步骤2: 等待进程完全关闭...')
-        await new Promise(resolve => setTimeout(resolve, 3000))
-
-        // 3. 重新启动Cursor
-        console.log('🔧 步骤3: 重新启动Cursor')
-        const startResult = await cursorService.startCursor()
-        if (startResult.success) {
-          console.log('✅ Cursor启动成功')
-          ElMessage.success('✅ Cursor刷新成功！')
-        } else {
-          console.warn('⚠️ Cursor启动可能失败:', startResult.error)
-          ElMessage.warning('Cursor启动可能失败，请手动检查')
-        }
-
-      } catch (error) {
-        if (error !== 'cancel') {
-          console.error('❌ 刷新Cursor失败:', error)
-          ElMessage.error('刷新Cursor失败: ' + error.message)
-        }
-      } finally {
-        loading.refresh = false
-      }
-    }
-
-    // 🔧 诊断Cursor路径
-    const diagnoseCursorPaths = async () => {
-      try {
-        loading.diagnosis = true
-        console.log('🔧 开始诊断Cursor路径...')
-        
-        // 1. 检测可执行文件路径
-        console.log('🔍 正在查找Cursor可执行文件...')
-        const executablePath = await cursorService.findCursorExecutable()
-        
-        // 2. 检测数据库路径
-        console.log('🔍 正在查找Cursor数据库文件...')
-        const dbResult = await cursorService.detectActualDbPath()
-        
-        let diagnosticInfo = '=== Cursor 路径诊断结果 ===\n\n'
-        
-        // 可执行文件信息
-        if (executablePath) {
-          diagnosticInfo += `✅ 可执行文件: ${executablePath}\n\n`
-        } else {
-          diagnosticInfo += `❌ 可执行文件: 未找到\n\n`
-        }
-        
-        // 数据库文件信息
-        if (dbResult.foundPaths && dbResult.foundPaths.length > 0) {
-          diagnosticInfo += '✅ 数据库文件:\n'
-          dbResult.foundPaths.forEach(p => {
-            diagnosticInfo += `  路径: ${p.path}\n`
-            diagnosticInfo += `  大小: ${(p.size / 1024).toFixed(2)} KB\n`
-            diagnosticInfo += `  修改时间: ${new Date(p.modified).toLocaleString()}\n\n`
-          })
-        } else {
-          diagnosticInfo += '❌ 数据库文件: 未找到\n\n'
-        }
-        
-        // 当前使用的路径
-        await cursorService.initialize()
-        diagnosticInfo += '=== 当前配置路径 ===\n'
-        diagnosticInfo += `可执行文件: ${cursorService.cursorPaths.executable}\n`
-        diagnosticInfo += `数据库文件: ${cursorService.cursorPaths.sqlite}\n`
-        
-        if (executablePath || (dbResult.foundPaths && dbResult.foundPaths.length > 0)) {
-          ElMessage.success('诊断完成！')
-        } else {
-          ElMessage.warning('部分路径检测失败')
-        }
-        
-        await ElMessageBox.alert(diagnosticInfo, 'Cursor 路径诊断', {
-          confirmButtonText: '确定'
-        })
-        
-      } catch (error) {
-        console.error('❌ 诊断失败:', error)
-        ElMessage.error('诊断失败: ' + error.message)
-      } finally {
-        loading.diagnosis = false
-      }
-    }
-
-    // 🔧 一键续期Pro（保留原有逻辑）
     const renewPro = async () => {
-      if (!isLicenseValid.value) {
-        ElMessage.warning('请先验证有效的授权码')
-        return
-      }
-
+      if (!isLicenseValid.value) return ElMessage.warning('请先激活有效的授权码')
+      loading.operations = true
       try {
-        await ElMessageBox.confirm(
-          'Cursor将会重启！\n确定要继续吗？',
-          '确认续期Pro',
-          {
-            confirmButtonText: '开始续期',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await cursorService.killCursorProcess()
 
-        loading.operations = true
-        console.log('🔧 开始执行Pro续期流程')
-
-        // 0. 环境检查：不满足条件时直接拦截，避免浪费账号
-        console.log('🔍 正在检查环境是否允许换号/续杯...')
-        const envCheck = await cursorService.checkEnvironmentForRenewal()
-        if (!envCheck.success) {
-          const reasons = envCheck.reasons || []
-          const reasonText = reasons.length > 0 ? reasons.join('；') : '未知原因'
-          ElMessage.error(`当前环境不允许换号：${reasonText}`)
-          console.warn('❌ 环境检查未通过，终止续杯流程。详情:', envCheck)
+        const oldEmail = currentAccount.email || 'no-current-account'
+        const accountRes = await accountService.getAccountByCode(licenseCode.value, oldEmail)
+        if (!accountRes || !accountRes.success || !accountRes.data) {
+          ElMessage.error('❌ 获取新账号失败: ' + (accountRes?.error || '未知错误'))
+          loading.operations = false
           return
         }
-        console.log('✅ 环境检查通过，可以安全执行续杯流程')
-
-        // 1. 获取当前账号信息（用于传递给后端）
-        const currentAccountInfo = await cursorService.getCurrentAccountInfo()
-        const currentEmail = currentAccountInfo.data?.email || 'no-current-account'
         
-        // 2. 从后端API获取新账号
-        console.log('🔧 步骤1: 正在从服务器获取新账号...')
-        const macAddress = await deviceService.getMacAddress()
-        console.log('🔧 设备MAC地址:', macAddress)
-        // 版本拦截：低于最小版本不允许请求后端
-        const _vs = new VersionService()
-        if (_vs.compareVersions(appVersion.value, MIN_REQUIRED_VERSION) < 0) {
-          ElMessage.error(`当前版本过低（${appVersion.value}），请更新到≥${MIN_REQUIRED_VERSION} 后再试`)
-          return
+        const newAccount = accountRes.data
+        const sessionToken = newAccount.sessionToken || newAccount.token || newAccount.WorkosCursorSessionToken
+
+        const resetRes = await cursorService.resetMachineId()
+        if (!resetRes.success) {
+          console.warn('机器码重置发生警告 (此步骤可能被跳过): ' + resetRes.error)
         }
 
-        const apiUrl = `${API_CONFIG.BASE_URL}/getAccountByCode/${licenseCode.value}/${macAddress}/${encodeURIComponent(currentEmail)}`
-
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: versionHeaders({ 'Content-Type': 'application/json' })
-        })
+        const sqlitePath = cursorService.cursorPaths.sqlite
+        const queries = [
+          { query: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedEmail', newAccount.email] },
+          { query: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedSignUpType', 'Auth_0'] },
+          { query: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['WorkosCursorSessionToken', sessionToken] }
+        ]
         
-        if (!response.ok) {
-          throw new Error(`API请求失败: ${response.status} ${response.statusText}`)
-        }
-        
-        const accountResult = await response.json()
-        if (accountResult.code !== 1) {
-          throw new Error('获取新账号失败: ' + accountResult.message)
-        }
-        
-        const newAccount = accountResult.data
-        console.log('✅ 获取新账号成功:', newAccount.email)
-        console.log('📊 后端返回的完整账号数据:', JSON.stringify(newAccount, null, 2))
-        console.log('🔑 检查关键字段:')
-        console.log('  - email:', newAccount.email ? '✅' : '❌')
-        console.log('  - sessionToken:', newAccount.sessionToken ? '✅' : '❌')
-        console.log('  - signUpType:', newAccount.signUpType ? '✅' : '❌')
-        
-        // 验证新账号数据完整性
-        if (!newAccount.email) {
-          throw new Error('获取的新账号缺少email')
-        }
-        
-        // 🔑 关键：必须要有 sessionToken
-        if (!newAccount.sessionToken) {
-          throw new Error('获取的新账号缺少sessionToken')
-        }
-        
-        // 🔑 改为仅使用 SessionToken 模式：不再通过 reftoken 获取 AccessToken
-        // 确保使用 URL 编码的分隔符 %3A%3A
-        if (!newAccount.sessionToken.includes('%3A%3A') && newAccount.sessionToken.includes('::')) {
-          newAccount.sessionToken = newAccount.sessionToken.replace(/::/g, '%3A%3A')
-          console.log('🔧 将 :: 转换为 %3A%3A')
-        }
-
-        // 3. 彻底关闭Cursor (增强版)
-        console.log('🔧 步骤3: 正在彻底关闭所有Cursor进程...')
-        const killResult = await cursorService.killCursorProcess()
-        if (killResult.success) {
-          console.log('✅ 所有Cursor进程已关闭')
-        } else {
-          console.warn('⚠️ Cursor进程关闭可能不完整:', killResult.error)
-        }
-        
-        // 4. 重置机器ID（参考开源项目：无需等待，直接重置）
-        console.log('🔧 步骤4: 正在重置机器ID...')
-        const resetResult = await cursorService.resetMachineId()
-        if (!resetResult.success) {
-          console.error('❌ 机器ID重置失败:', resetResult.error)
-          throw new Error('机器ID重置失败: ' + resetResult.error)
-        }
-        console.log('✅ 机器ID重置成功')
-
-        // 5. 应用新账号
-        console.log('🔧 步骤5: 正在应用新账号:', newAccount.email)
-        const updateResult = await cursorService.updateAccountStorage(newAccount)
-        if (!updateResult.success) {
-          throw new Error('应用新账号失败: ' + updateResult.error)
-        }
-        console.log('✅ 账号存储更新成功')
-
-        // 6. 启动Cursor（即发即走，不等待）
-        console.log('🔧 步骤6: 正在启动Cursor...')
-        const startResult = await cursorService.startCursor()
-        if (startResult.success) {
-          console.log('✅ Cursor启动命令已执行')
-        } else {
-          console.warn('⚠️ Cursor启动可能失败:', startResult.error)
-          ElMessage.warning('⚠️ 启动命令可能失败，请手动检查 Cursor')
-        }
-
-        // 7. 验证账号切换是否成功，成功后确认换号（两阶段确认机制）
-        console.log('🔧 步骤7: 正在验证账号切换结果...')
-        try {
-          // 等待一小段时间让 Cursor 启动并加载账号信息
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          
-          // 读取 Cursor 当前登录的账号
-          const currentAccountAfterSwitch = await cursorService.getCurrentAccountInfo()
-          const currentEmailAfterSwitch = currentAccountAfterSwitch.data?.email
-          
-          console.log('🔍 切换后当前账号:', currentEmailAfterSwitch)
-          console.log('🔍 目标新账号:', newAccount.email)
-          
-          // 验证账号是否切换成功
-          if (currentEmailAfterSwitch && currentEmailAfterSwitch === newAccount.email) {
-            console.log('✅ 账号切换验证成功，正在确认换号...')
-            
-            const confirmUrl = `${API_CONFIG.BASE_URL}/confirmAccountSwitch`
-            const confirmResponse = await fetch(confirmUrl, {
-              method: 'POST',
-              headers: versionHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' }),
-              body: new URLSearchParams({
-                code: licenseCode.value,
-                mac: macAddress,
-                email: newAccount.email
-              })
-            })
-            
-            if (confirmResponse.ok) {
-              const confirmResult = await confirmResponse.json()
-              if (confirmResult.code === 1) {
-                console.log('✅ 换号确认成功')
-              } else {
-                console.warn('⚠️ 换号确认返回异常:', confirmResult.message)
-              }
-            } else {
-              console.warn('⚠️ 换号确认请求失败:', confirmResponse.status)
-            }
+        if (window.electronAPI) {
+          if (window.electronAPI.sqliteBatchRun) {
+            await window.electronAPI.sqliteBatchRun(sqlitePath, queries)
           } else {
-            console.warn('⚠️ 账号切换验证失败，当前账号与目标账号不一致')
-            console.warn('   当前账号:', currentEmailAfterSwitch || '未获取到')
-            console.warn('   目标账号:', newAccount.email)
-            console.warn('   不调用确认接口，用户可重试续杯')
-          }
-        } catch (confirmError) {
-          console.warn('⚠️ 换号验证/确认异常（不影响续杯结果）:', confirmError.message)
-        }
-
-        console.log('✅ Pro续期流程执行完成')
-        
-        // 🔧 刷新授权码状态（次卡需要更新剩余次数）
-        console.log('🔄 正在刷新授权码状态...')
-        try {
-          const licenseResult = await licenseService.validateLicense(licenseCode.value)
-          if (licenseResult.success) {
-            licenseData.value = { ...licenseResult.data }
-            await storageService.saveLicenseData(licenseResult.data)
-            console.log('✅ 授权码状态已刷新:', licenseResult.data)
-            
-            // 显示剩余次数提示
-            if (licenseResult.data.cardType === 2) {
-              ElMessage.info(`剩余换号次数：${licenseResult.data.remainingSwitches}次`)
+            for (const q of queries) {
+              await window.electronAPI.sqliteQuery(sqlitePath, q.query, q.params)
             }
           }
-        } catch (error) {
-          console.warn('⚠️ 刷新授权码状态失败:', error)
         }
-        
-        // 🔧 刷新当前账号信息
-        console.log('🔄 正在刷新当前账号信息...')
-        await getCurrentAccount()
-        console.log('✅ 账号信息已刷新')
 
-      } catch (error) {
-        if (error !== 'cancel') {
-          console.error('❌ Pro续期失败:', error)
-          ElMessage.error('Pro续期失败: ' + error.message)
-        }
+        await accountService.confirmAccountSwitch(licenseCode.value, newAccount.email)
+        await cursorService.startCursor()
+
+        console.log('🚀 续杯换号成功！')
+        ElMessageBox.confirm(
+          '续杯换号已完成，Cursor 正在启动。建议手动检查一下 Cursor 登录状态。',
+          '🚀 续杯换号成功',
+          {
+            confirmButtonText: '查看常见问题',
+            cancelButtonText: '知道了',
+            type: 'success'
+          }
+        ).then(() => {
+          openFaqUrl()
+        }).catch(() => {})
+
+        await getCurrentAccount()
+        await validateLicense() 
+      } catch (e) {
+        console.error('续杯失败:', e)
+        ElMessage.error('续杯失败: ' + e.message)
       } finally {
         loading.operations = false
       }
     }
 
-    // 🔧 从缓存加载授权码和状态
-    const loadCachedLicense = async () => {
-      try {
-        console.log('📖 正在从缓存加载授权码...')
-        
-        // 加载授权码
-        const codeResult = await storageService.loadLicenseCode()
-        if (codeResult.success) {
-          licenseCode.value = codeResult.licenseCode
-          console.log('📖 从缓存加载授权码成功:', codeResult.licenseCode)
-          
-          // 自动获取最新状态（从服务器）
-          console.log('🔄 正在从服务器获取最新授权状态...')
-          const result = await licenseService.validateLicense(codeResult.licenseCode)
-          
-          if (result.success) {
-            // 强制更新响应式数据
-            licenseData.value = { ...result.data }
-            
-            // 更新缓存中的状态信息
-            await storageService.saveLicenseData(result.data)
-            console.log('✅ 授权状态已更新:', result.data)
-            console.log('🔄 当前licenseData.value:', licenseData.value)
-            
-            // 强制触发响应式更新
-            await new Promise(resolve => setTimeout(resolve, 100))
-            
-            if (result.data.status === 'valid') {
-              // 根据授权码类型显示不同的消息（2=次卡）
-              if (result.data.cardType === 2) {
-                ElMessage.success(`🔄 授权状态已刷新，剩余${result.data.remainingSwitches}次换号机会`)
-              } else {
-                ElMessage.success(`🔄 授权状态已刷新，剩余${result.data.daysRemaining}天`)
-              }
-            } else if (result.data.status === 'expired') {
-              if (result.data.cardType === 2) {
-                ElMessage.warning(`⚠️ 次卡已用完，已使用${result.data.usedSwitches}次`)
-              } else {
-                ElMessage.warning(`⚠️ 天卡已过期，过期时间：${result.data.expiryDate}`)
-              }
-            } else if (result.data.status === 'unactivated') {
-              ElMessage.success(`✅ 授权码有效，${result.data.message}`)
-            } else {
-              ElMessage.warning('⚠️ 授权码状态异常，请重新验证')
-            }
-          } else {
-            console.error('❌ 获取授权状态失败:', result.error)
-            ElMessage.error('获取授权状态失败，请重新验证授权码')
-            
-            // 尝试加载缓存的状态信息作为备用
-            const dataResult = await storageService.loadLicenseData()
-            if (dataResult.success) {
-              licenseData.value = dataResult.licenseData
-              console.log('📖 使用缓存的状态信息作为备用')
-              ElMessage.info('使用缓存的授权信息，建议重新验证')
-            }
-          }
-        } else {
-          console.log('📖 缓存中没有授权码，等待用户输入')
-        }
-      } catch (error) {
-        console.error('❌ 加载缓存授权码失败:', error)
-        ElMessage.error('加载缓存授权码失败: ' + error.message)
-      }
-    }
-
-    // 🔧 获取当前Cursor账号信息
     const getCurrentAccount = async () => {
       currentAccount.loading = true
       try {
-        console.log('🔍 正在获取当前Cursor账号信息...')
-        await cursorService.initialize() // 确保服务已初始化
-        const accountResult = await cursorService.getCurrentAccountInfo()
+        let email = null
+        let hasAccessToken = false
+        let isAuthenticated = false
         
-        if (accountResult.success) {
-          const accountData = accountResult.data
-          console.log('✅ 获取账号信息成功:', accountData)
-          
-          // 更新响应式数据
-          Object.assign(currentAccount, {
-            email: accountData.email,
-            signUpType: accountData.signUpType,
-            isAuthenticated: accountData.isAuthenticated,
-            hasAccessToken: accountData.hasAccessToken,
-            hasRefreshToken: accountData.hasRefreshToken,
-            loading: false
-          })
-        } else {
-          console.error('❌ 获取账号信息失败:', accountResult.error)
-          Object.assign(currentAccount, {
-            email: null,
-            signUpType: null,
-            isAuthenticated: false,
-            hasAccessToken: false,
-            hasRefreshToken: false,
-            loading: false
-          })
-        }
-      } catch (error) {
-        console.error('❌ 获取账号信息出错:', error)
-        Object.assign(currentAccount, {
-          email: null,
-          signUpType: null,
-          isAuthenticated: false,
-          hasAccessToken: false,
-          hasRefreshToken: false,
-          loading: false
-        })
-      }
-    }
-
-    // 🔧 获取系统公告
-    const getSystemNotices = async () => {
-      try {
-        console.log('📢 正在获取系统公告...')
-        
-        const response = await fetch(getApiUrl('/getSystemNotices'), {
-          method: 'GET',
-          headers: versionHeaders({ 'Content-Type': 'application/json' })
-        })
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-        
-        const result = await response.json()
-        
-        if (result.code === 1) {
-          systemNotices.value = result.data.notices || []
-          console.log('✅ 获取系统公告成功，共', systemNotices.value.length, '条')
-        } else {
-          console.warn('⚠️ 获取系统公告失败:', result.message)
-          // 使用默认公告作为备用
-          systemNotices.value = [{
-            id: 'default',
-            title: '频繁换号警告',
-            content: '不要频繁进行换号，一天之内更换过多会导致无效账号，本店会进行设备封禁，一天10-20个足够使用！！',
-            noticeType: 'warning',
-            createdTime: '2024-07-06 23:30:00'
-          }]
-        }
-        
-      } catch (error) {
-        console.error('❌ 获取系统公告失败:', error)
-        // 使用默认公告作为备用
-        systemNotices.value = [{
-          id: 'default',
-          title: '频繁换号警告',
-          content: '不要频繁进行换号，一天之内更换过多会导致无效账号，本店会进行设备封禁，一天10-20个足够使用！！',
-          noticeType: 'warning',
-          createdTime: '2024-07-06 23:30:00'
-        }]
-      }
-    }
-
-    // 🔧 打开购买页面
-    const openPurchasePage = async () => {
-      try {
-        loading.purchase = true
-        console.log('🛒 正在打开购买页面...')
-        
-        // 从配置文件获取购买页面URL
-        const purchaseUrl = getDefaultPurchaseUrl()
-        
-        if (window.electronAPI && window.electronAPI.openPurchasePage) {
-          const result = await window.electronAPI.openPurchasePage(purchaseUrl)
-          
-          if (result.success) {
-            console.log('✅ 成功打开购买页面')
-            ElMessage.success(getPurchaseMessage('opening'))
-          } else {
-            console.error('❌ 打开购买页面失败:', result.error)
-            ElMessage.error(getPurchaseMessage('error') + ': ' + result.error)
+        await cursorService.initialize()
+        const sqlitePath = cursorService.cursorPaths?.sqlite
+        if (sqlitePath && window.electronAPI) {
+          const query = "SELECT value FROM ItemTable WHERE key IN ('cursorAuth/cachedSignUpType', 'cursorAuth/emails', 'cursorAuth/accessToken', 'cursorAuth/cachedEmail')"
+          const results = await window.electronAPI.sqliteQuery(sqlitePath, query, [])
+          if (results && results.length > 0) {
+            for (const row of results) {
+              try {
+                const strVal = row.value ? row.value.toString() : ''
+                if (strVal.includes('@')) {
+                  const match = strVal.match(/[\w.-]+@[\w.-]+\.\w+/)
+                  if (match && !email) email = match[0]
+                }
+                if (strVal.includes('accessToken')) hasAccessToken = true
+              } catch(e) {}
+            }
           }
-        } else {
-          console.warn('⚠️ Electron API 不可用，尝试使用 window.open')
-          // 备用方案：在 Web 版本中使用 window.open
-          window.open(purchaseUrl, '_blank')
-          ElMessage.success(getPurchaseMessage('success'))
         }
-        
-      } catch (error) {
-        console.error('❌ 打开购买页面时发生错误:', error)
-        ElMessage.error('打开购买页面失败: ' + error.message)
+        if (email || hasAccessToken) isAuthenticated = true
+        Object.assign(currentAccount, { email, hasAccessToken, isAuthenticated })
+      } catch (e) {
+        console.error('获取账号失败:', e)
       } finally {
-        loading.purchase = false
+        currentAccount.loading = false
       }
     }
 
-    // 🔧 检查管理员权限
-    const checkAdminRights = async () => {
-      try {
-        if (window.electronAPI && window.electronAPI.checkAdminRights) {
-          const hasAdminRights = await window.electronAPI.checkAdminRights()
-          if (!hasAdminRights) {
-            ElMessage.warning('⚠️ 当前没有管理员权限，某些功能可能无法正常工作。建议以管理员权限运行应用程序。')
-          } else {
-            console.log('✅ 已获得管理员权限')
-          }
-          return hasAdminRights
-        }
-        return true // 浏览器环境假设有权限
-      } catch (error) {
-        console.warn('⚠️ 无法检查管理员权限:', error.message)
-        return false
-      }
+    const forceRefreshUI = async () => {
+      ElMessage.info('正在同步状态...')
+      await getCurrentAccount()
+      if (licenseCode.value) await validateLicense()
     }
 
-    // 🔧 检查版本更新
     const checkForUpdates = async () => {
       try {
-        console.log('🔍 开始检查版本更新...')
-        
-        // 获取当前版本号
-        const currentVersion = versionService.getCurrentVersion()
-        console.log('📌 当前版本:', currentVersion)
-        
-        // 调用后端API检查版本
-        const result = await versionService.checkVersion(currentVersion)
-        
-        if (result.success && result.data) {
-          const { needsUpdate, latestVersion, updateInfo } = result.data
+        const result = await versionService.checkVersion(appVersion.value)
+        if (result.success && result.data?.needsUpdate) {
+          const { latestVersion, updateInfo } = result.data
+          faqUrl.value = result.data.faqUrl || faqUrl.value
           
-          if (needsUpdate && updateInfo) {
-            console.log('🆕 发现新版本:', latestVersion)
-            
-            // 构建更新提示内容
-            let messageHtml = `
-              <div style="text-align: left;">
-                <p style="margin-bottom: 12px; font-size: 14px;">${updateInfo.message}</p>
-                <div style="background: #f5f7fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                  <p style="margin: 0 0 8px 0; font-weight: 600; color: #303133;">更新内容：</p>
-                  <ul style="margin: 0; padding-left: 20px; color: #606266;">
-                    ${updateInfo.features.map(feature => `<li style="margin: 4px 0;">${feature}</li>`).join('')}
-                  </ul>
-                </div>
-                ${updateInfo.downloadUrl ? 
-                  `<p style="margin: 0; font-size: 13px; color: #909399;">下载地址：<a href="${updateInfo.downloadUrl}" target="_blank" style="color: #409EFF;">${updateInfo.downloadUrl}</a></p>` 
-                  : ''}
-              </div>
-            `
-            
-            // 显示更新提示对话框
-            await ElMessageBox({
-              title: updateInfo.title || '发现新版本',
-              dangerouslyUseHTMLString: true,
-              message: messageHtml,
-              confirmButtonText: updateInfo.downloadUrl ? '立即下载' : '我知道了',
-              cancelButtonText: '稍后提醒',
-              showCancelButton: !updateInfo.forceUpdate,
-              closeOnClickModal: !updateInfo.forceUpdate,
-              closeOnPressEscape: !updateInfo.forceUpdate,
-              showClose: !updateInfo.forceUpdate,
-              type: 'info',
-              customClass: 'update-dialog',
-              center: false
-            }).then(() => {
-              // 点击"立即下载"按钮
-              if (updateInfo.downloadUrl) {
-                if (window.electronAPI && window.electronAPI.openExternal) {
-                  window.electronAPI.openExternal(updateInfo.downloadUrl)
-                } else {
-                  window.open(updateInfo.downloadUrl, '_blank')
-                }
-              }
-            }).catch(() => {
-              // 点击"稍后提醒"或关闭
-              console.log('用户选择稍后更新')
-            })
-            
-          } else {
-            console.log('✅ 当前已是最新版本')
-          }
-        } else {
-          console.warn('⚠️ 版本检查失败:', result.error)
-          // 版本检查失败时静默处理，不打扰用户
+          ElMessageBox.confirm(
+            `发现新版本 v${latestVersion}，点击确定前往下载。`,
+            '版本更新',
+            { confirmButtonText: '立即下载', cancelButtonText: '稍后' }
+          ).then(() => {
+            if (updateInfo.downloadUrl) window.electronAPI.openExternal(updateInfo.downloadUrl)
+          })
         }
-        
-      } catch (error) {
-        console.error('❌ 检查版本更新失败:', error)
-        // 版本检查失败时静默处理，不打扰用户
-      }
+      } catch (e) { console.error('检查更新失败:', e) }
     }
 
-    // 🔧 键盘快捷键 - Ctrl+Shift+D 打开调试面板（仅调试模式）
-    const handleKeyDown = (event) => {
-      if (debugMode.value && event.ctrlKey && event.shiftKey && event.key === 'D') {
-        event.preventDefault()
-        showDebugPanel.value = !showDebugPanel.value
-      }
+    const selectCursorPath = async () => {
+      if (!window.electronAPI?.openFileDialog) return
+      loading.pathSelection = true
+      try {
+        const result = await window.electronAPI.openFileDialog({ title: '选择 Cursor.exe' })
+        if (result.success) {
+          cursorExecutablePath.value = result.filePath
+          ElMessage.success('路径设置成功')
+          showPathDialog.value = false
+        }
+      } finally { loading.pathSelection = false }
     }
 
-    // 🔧 初始化
+    const clearCursorPath = () => {
+      cursorExecutablePath.value = ''
+      ElMessage.info('已使用默认路径')
+    }
+
     onMounted(async () => {
-      // 获取调试模式状态
+      const result = await storageService.loadLicenseCode()
+      if (result && result.success && result.licenseCode) {
+        licenseCode.value = result.licenseCode
+        validateLicense()
+      }
+      getCurrentAccount()
+      checkForUpdates()
+      
+      // 初始化获取 Cursor 状况和内部版本
       try {
-        if (window.electronAPI && window.electronAPI.getDebugMode) {
+        await cursorService.initialize()
+        if (cursorService.cursorPaths?.executable) {
+           cursorExecutablePath.value = cursorService.cursorPaths.executable
+        }
+        if (window.electronAPI) {
+          const ver = await window.electronAPI.getCursorVersion()
+          if (ver) cursorEditorVersion.value = typeof ver === 'object' ? ver.version : ver
+        }
+      } catch (e) {}
+
+      // 初始化调试模式：从主进程获取 DEBUG_MODE，并监听 Ctrl+Shift+D 切换
+      if (window.electronAPI) {
+        try {
           debugMode.value = await window.electronAPI.getDebugMode()
-          if (debugMode.value) {
-            console.log('🔧 调试模式已启用')
-            console.log('💡 快捷键: Ctrl+Shift+D 打开调试工具, F12 打开控制台')
-            // 添加键盘事件监听
-            window.addEventListener('keydown', handleKeyDown)
-          }
+        } catch (e) {}
+        if (window.electronAPI.onToggleDebugPanel) {
+          window.electronAPI.onToggleDebugPanel(() => {
+            showDebugPanel.value = !showDebugPanel.value
+          })
         }
-      } catch (error) {
-        // 静默处理
       }
-      
-      // 获取软件版本号
-      try {
-        if (window.electronAPI && window.electronAPI.getAppVersion) {
-          const version = await window.electronAPI.getAppVersion()
-          appVersion.value = version
-        }
-      } catch (error) {
-        // 静默处理版本号获取失败
-      }
-      
-      // 获取 Cursor 版本号
-      try {
-        if (window.electronAPI && window.electronAPI.getCursorVersion) {
-          const result = await window.electronAPI.getCursorVersion()
-          if (result.success) {
-            cursorEditorVersion.value = result.version
-            console.log('✅ 获取 Cursor 版本成功:', result.version)
-          } else {
-            cursorEditorVersion.value = '未知'
-            console.warn('⚠️ 获取 Cursor 版本失败:', result.error)
-          }
-        }
-      } catch (error) {
-        console.error('❌ 获取 Cursor 版本号出错:', error)
-        cursorEditorVersion.value = '未知'
-      }
-      
-      // 检查管理员权限
-      await checkAdminRights()
-      
-      // 并行加载缓存授权码、当前账号信息、系统公告、版本检查和应用配置
-      await Promise.all([
-        loadCachedLicense(), // 加载缓存的授权码并获取最新状态
-        getCurrentAccount(), // 获取当前账号信息
-        getSystemNotices(),  // 获取系统公告
-        checkForUpdates(),   // 检查版本更新
-        loadAppConfig()      // 读取应用配置（包括 Cursor 路径）
-      ])
-      
-      console.log('🔧 应用初始化完成')
     })
 
-    // 🔧 强制刷新UI状态
-    const forceRefreshUI = async () => {
-      console.log('🔄 强制刷新UI状态')
-      console.log('当前licenseData.value:', licenseData.value)
-      
-      // 强制触发响应式更新
-      if (licenseData.value) {
-        const temp = { ...licenseData.value }
-        licenseData.value = null
-        await new Promise(resolve => setTimeout(resolve, 10))
-        licenseData.value = temp
-        console.log('✅ UI状态已强制刷新')
-        console.log('刷新后的状态:', {
-          status: licenseData.value.status,
-          isValid: isLicenseValid.value,
-          daysRemaining: licenseData.value.daysRemaining
-        })
-      }
-    }
-
     return {
-      // 🔧 响应式数据
-      licenseCode,
-      licenseData,
-      systemNotices,
-      loading,
-      currentAccount,
-      appVersion,
-      cursorEditorVersion,
-      debugMode,
-      showDebugPanel,
-      showPathDialog,
-      cursorExecutablePath,
-      
-      // 🔧 计算属性
-      licenseStatus,
-      isLicenseValid,
-      cursorVersion,
-      membershipType,
-      membershipClass,
-      expiryTime,
-      expiryClass,
-      daysRemaining,
-      totalDays,
-      usagePercentage,
-      progressColor,
-      
-      // 🔧 方法
-      validateLicense,
-      refreshCursor,
-      openPurchasePage,
-      renewPro,
-      getCurrentAccount,
-      loadCachedLicense,
-      diagnoseCursorPaths,
-      forceRefreshUI,
-      selectCursorPath,
-      clearCursorPath
+      licenseCode, licenseData, systemNotices, debugMode, showDebugPanel, showPathDialog,
+      faqUrl, cursorExecutablePath, cursorEditorVersion, loading, currentAccount,
+      cursorVersion, licenseStatus, isLicenseValid,
+      expiryTime, expiryClass, daysRemaining, totalDays, usagePercentage, progressColor,
+      todaySwitchCount, validateLicense, openPurchasePage, renewPro, openFaqUrl,
+      forceRefreshUI, selectCursorPath, clearCursorPath, getCurrentAccount
     }
   }
 }
 </script>
 
 <style scoped>
-/* 🎨 全新的UI样式设计 */
-
-.app-container {
-  height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-}
-
-/* 主内容区域 */
-.main-content {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* 完全隐藏滚动条 */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  align-items: start;
-}
-
-/* 左侧面板 */
-.left-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.license-card {
-  background: rgba(255, 255, 255, 0.95);
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.step-number {
-  width: 40px;
-  height: 40px;
+.step-dot {
+  width: 24px;
+  height: 24px;
   background: #1890ff;
   color: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.step-number.warning-icon {
-  background: #ff4d4f;
-  font-size: 20px;
-}
-
-.card-title h3 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
-  color: #262626;
-}
-
-.card-title p {
-  margin: 0;
   font-size: 14px;
-  color: #8c8c8c;
-  line-height: 1.5;
+  font-weight: bold;
+}
+/* 🎨 极致对称与全平铺最终修订版 */
+.app-container {
+  height: 100vh;
+  background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+  font-family: 'Inter', 'PingFang SC', -apple-system, sans-serif;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.license-input-section {
-  margin-top: 16px;
-}
-
-.license-input {
-  width: 100%;
-}
-
-.license-input :deep(.el-input__inner) {
-  border-radius: 8px;
-  border: 1px solid #d9d9d9;
-  font-size: 16px;
-}
-
-.license-input :deep(.el-input-group__append) {
-  border-radius: 0 8px 8px 0;
-}
-
-/* 购买授权码区域 */
-.purchase-section {
-  margin-top: 24px;
-  padding: 20px;
-  background: linear-gradient(135deg, #fff9f0 0%, #fff7e6 100%);
-  border: 1px solid #ffd591;
-  border-radius: 12px;
-  text-align: center;
-}
-
-.purchase-info {
-  margin-bottom: 16px;
-}
-
-.purchase-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #d46b08;
-  margin: 0 0 8px 0;
+.main-content {
+  flex: 1;
+  padding: 10px 40px 20px 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  height: 100%;
 }
 
-.purchase-desc {
-  font-size: 14px;
-  color: #ad6800;
-  margin: 0;
-  line-height: 1.5;
-}
-
-.purchase-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.purchase-button {
-  min-width: 160px;
-  height: 44px;
-  font-size: 16px;
-  font-weight: 600;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #fa8c16 0%, #d46b08 100%);
-  border: none;
-  color: white;
-  box-shadow: 0 4px 12px rgba(212, 107, 8, 0.3);
-  transition: all 0.3s ease;
-}
-
-.purchase-button:hover {
-  background: linear-gradient(135deg, #d46b08 0%, #ad6800 100%);
-  box-shadow: 0 6px 16px rgba(212, 107, 8, 0.4);
-  transform: translateY(-2px);
-}
-
-.purchase-button:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(212, 107, 8, 0.3);
-}
-
-.purchase-tips {
-  font-size: 12px;
-  color: #ad6800;
-  margin: 0;
-  opacity: 0.8;
-  line-height: 1.4;
-}
-
-/* 系统公告卡片 */
-.notice-card {
-  border-radius: 12px;
-  margin-bottom: 16px;
-}
-
-.notice-card:last-child {
-  margin-bottom: 0;
-}
-
-.notice-warning {
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-}
-
-.notice-info {
-  background: #e6f7ff;
-  border: 1px solid #91d5ff;
-}
-
-.notice-success {
-  background: #f6ffed;
-  border: 1px solid #b7eb8f;
-}
-
-.notice-error {
-  background: #fff2f0;
-  border: 1px solid #ffccc7;
-}
-
-.notice-content {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.notice-icon {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.notice-warning .notice-icon {
-  color: #fa8c16;
-}
-
-.notice-info .notice-icon {
-  color: #1890ff;
-}
-
-.notice-success .notice-icon {
-  color: #52c41a;
-}
-
-.notice-error .notice-icon {
-  color: #ff4d4f;
-}
-
-.notice-text strong {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.notice-warning .notice-text strong {
-  color: #d46b08;
-}
-
-.notice-info .notice-text strong {
-  color: #096dd9;
-}
-
-.notice-success .notice-text strong {
-  color: #389e0d;
-}
-
-.notice-error .notice-text strong {
-  color: #cf1322;
-}
-
-.notice-text p {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.notice-warning .notice-text p {
-  color: #ad6800;
-}
-
-.notice-info .notice-text p {
-  color: #0050b3;
-}
-
-.notice-success .notice-text p {
-  color: #237804;
-}
-
-.notice-error .notice-text p {
-  color: #a8071a;
-}
-
-.notice-date {
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.notice-warning .notice-date {
-  color: #ad6800;
-}
-
-.notice-info .notice-date {
-  color: #0050b3;
-}
-
-.notice-success .notice-date {
-  color: #237804;
-}
-
-.notice-error .notice-date {
-  color: #a8071a;
-}
-
-/* 右侧面板 */
-.right-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-/* 账号状态显示 */
-.account-status-section {
-  background: rgba(255, 255, 255, 0.95);
-  padding: 24px;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-/* 新的网格布局 */
-.status-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.status-item-grid {
+.content-grid {
   display: grid;
-  grid-template-columns: 110px 1fr;
-  align-items: center;
-  gap: 16px;
-  min-height: 32px;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 1100px;
+  width: 100%;
+  align-items: stretch; /* 确保左右高度一致 */
 }
 
-.status-label-grid {
-  font-size: 14px;
-  color: #8c8c8c;
-  text-align: right;
-  white-space: nowrap;
-  padding-right: 8px;
-  position: relative;
+/* 统一两侧卡片外观 */
+.left-panel, .right-panel {
+  display: flex;
+  flex-direction: column;
 }
 
-.status-label-grid::after {
-  content: '：';
-  position: absolute;
-  right: 0;
+.left-main-card, .right-main-card {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(25px);
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.status-value-wrapper {
+/* 覆盖 el-card 的内部结构样式，避免双重 padding 且保证内部可以使用 flex 布局推到底部 */
+:deep(.el-card__body) {
+  padding: 24px !important;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+/* --- 左侧内容压缩 --- */
+.faq-integrated-entry {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 15px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e6f3ff 100%);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border: 1px solid rgba(24, 144, 255, 0.1);
 }
-
-.status-value {
-  font-size: 14px;
-  font-weight: 500;
-  color: #262626;
+.faq-integrated-entry:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(24, 144, 255, 0.15);
+  background: linear-gradient(135deg, #e6f3ff 0%, #d9edff 100%);
 }
-
-.status-value.cursor-version {
+.icon-pulse {
+  font-size: 24px;
   color: #1890ff;
-  font-family: 'Consolas', 'Monaco', monospace;
+  animation: pulse-icon 2s infinite;
+}
+@keyframes pulse-icon {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
 }
 
-.status-value.text-success {
-  color: #52c41a;
-}
-
-.status-value.text-warning {
-  color: #faad14;
-}
-
-.status-value.text-danger {
-  color: #ff4d4f;
-}
-
-.status-tag {
-  font-weight: 500;
-}
-
-/* 旧的样式保持兼容 */
-.status-row {
+.faq-text {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.faq-text .label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1890ff;
+}
+
+.faq-text .desc {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.divider-line {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 15px 0;
+}
+
+.activation-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-header-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
-.status-row:last-child {
-  margin-bottom: 0;
+.section-header-compact h3 {
+  margin: 0;
+  font-size: 19px;
+  color: #2c3e50;
 }
 
-.status-item {
+.input-container {
+  margin-bottom: 15px;
+}
+
+/* 购买按钮 */
+.premium-button-wrapper {
+  margin-top: 25px;
+  text-align: center;
+  padding-bottom: 10px;
+}
+
+.premium-purchase-btn {
+  width: 100%;
+  height: 52px !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  border: none !important;
+  background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%) !important;
+  box-shadow: 0 6px 18px rgba(255, 75, 43, 0.35) !important;
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
+
+.guide-tip {
+  font-size: 14px;
+  color: #999;
+  margin-top: 8px;
+}
+
+/* 使用须知（公告栏）压缩 */
+.instructions-section {
+  padding-top: 5px;
+}
+
+.notice-item-compact {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+}
+
+.notice-title { font-size: 14px; font-weight: 700; }
+.notice-msg { font-size: 13px; }
+.static-instruction p { font-size: 13px; margin: 4px 0; }
+
+/* --- 右侧内容压缩 --- */
+.status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-item-grid {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.status-label-grid { color: #8c8c8c; font-size: 15px; }
+.status-value { font-weight: 600; font-size: 15px; color: #333; }
+
+.current-account-info {
+  background: linear-gradient(145deg, #ffffff 0%, #f8faff 100%);
+  border: 1px solid #edf2f9;
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-top: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s ease;
+}
+
+.current-account-info:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
+}
+
+.current-account-info h4 { 
+  margin: 0 0 12px 0; 
+  font-size: 15px; 
+  color: #1a202c; 
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.status-label {
-  font-size: 14px;
-  color: #8c8c8c;
-  white-space: nowrap;
-}
-
-/* 当前账号信息样式 */
-.current-account-info {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.account-info-header h4 {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  color: #262626;
-  font-weight: 600;
+  border-bottom: 1px solid #edf2f9;
+  padding-bottom: 8px;
 }
 
 .account-details {
@@ -1853,637 +832,97 @@ export default {
   gap: 12px;
 }
 
-.account-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.account-label {
-  font-size: 14px;
-  color: #8c8c8c;
-  min-width: 60px;
-}
-
-.account-value {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.account-value.loading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #8c8c8c;
-}
-
-.account-value.email {
-  color: #1890ff;
-  font-family: 'Courier New', monospace;
-  font-weight: 600;
-}
-
-.account-value.no-account {
-  color: #ff4d4f;
-  font-style: italic;
-}
-
-.account-status-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-/* 卡密有效期信息 */
-.license-validity-section {
-  background: rgba(255, 255, 255, 0.95);
-  padding: 24px;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-.license-validity-section h4 {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  color: #262626;
-}
-
-.validity-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.validity-item {
+.account-item { 
+  font-size: 14px; 
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.validity-label {
-  font-size: 14px;
-  color: #8c8c8c;
+.account-label {
+  color: #718096;
 }
 
-.validity-value {
-  font-size: 14px;
+.account-value {
   font-weight: 500;
-  color: #262626;
+  color: #2d3748;
 }
 
-.validity-value.days-remaining {
-  color: #1890ff;
-  font-weight: 600;
-}
-
-.progress-section {
-  margin-top: 16px;
-}
-
-.progress-info {
+.account-status-tags {
+  margin-top: 4px;
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
+  gap: 8px;
 }
 
-.progress-info span {
-  font-size: 12px;
-  color: #8c8c8c;
+.validity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
 }
 
-.settings-dialog :deep(.el-dialog__body) {
-  padding: 18px 20px 16px 20px;
-}
-
-.settings-section {
-  background: linear-gradient(135deg, #ffffff 0%, #f7f9ff 100%);
-  border-radius: 12px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
-  padding: 16px 18px;
+.validity-item {
+  background: #fdfefe;
+  border: 1px solid #f0f4f8;
+  border-radius: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.settings-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.settings-header-text {
-  flex: 1;
-}
-
-.settings-title {
-  margin: 0 0 6px 0;
-  font-size: 16px;
-  color: #303133;
-  font-weight: 600;
-}
-
-.settings-desc {
-  margin: 0;
-  font-size: 13px;
-  color: #909399;
-  line-height: 1.6;
-}
-
-.settings-code {
-  font-family: 'Consolas', 'Courier New', monospace;
-  background: rgba(0, 0, 0, 0.04);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
-
-.settings-field {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
 }
 
-.settings-field-label {
+.validity-label {
   font-size: 13px;
-  color: #606266;
-  font-weight: 500;
+  color: #718096;
 }
 
-.settings-example {
-  font-size: 12px;
-  color: #a0a0a0;
+.validity-value { 
+  font-size: 20px; 
+  font-weight: 700; 
+  color: #2b6cb0;
 }
 
-.settings-priority-row {
-  margin-top: 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #f5f7fa;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.settings-priority-label {
-  font-size: 12px;
-  color: #909399;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.settings-tip {
-  font-size: 12px;
-  color: #606266;
-}
-
-/* 操作按钮区域 */
-.actions-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* 路径配置按钮 - 醒目样式 */
-.path-config-btn {
-  margin-left: 8px;
-  font-weight: 600;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(230, 162, 60, 0.3);
-  transition: all 0.3s ease;
-}
-
-.path-config-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.4);
-}
-
-/* 路径配置对话框样式 */
-.path-dialog :deep(.el-dialog) {
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.path-dialog :deep(.el-dialog__header) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 20px 24px;
-  margin: 0;
-}
-
-.path-dialog :deep(.el-dialog__title) {
-  color: white;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.path-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: white;
-  font-size: 20px;
-}
-
-.path-dialog :deep(.el-dialog__headerbtn:hover .el-dialog__close) {
-  color: #ffd700;
-}
-
-.path-dialog :deep(.el-dialog__body) {
-  padding: 24px;
-}
-
-.path-config-section {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.config-header .config-desc {
-  margin: 0;
-  font-size: 14px;
-  color: #606266;
-  line-height: 1.6;
-}
-
-.current-path-display {
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-  border: 2px solid #e4e7ed;
-  border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.current-path-display .path-label {
+.progress-info {
   font-size: 13px;
-  color: #909399;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #718096;
+  text-align: right;
+  margin-bottom: 6px;
 }
 
-.current-path-display .path-value {
-  font-size: 14px;
-  color: #303133;
-  font-family: 'Consolas', 'Courier New', monospace;
-  background: white;
-  padding: 10px 12px;
-  border-radius: 6px;
-  border: 1px solid #dcdfe6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+/* 续杯按钮 */
+.renewal-container {
+  margin-top: auto; /* 推到卡片最底部 */
+  background: transparent;
+  padding-top: 15px;
 }
 
-.path-config-section .path-actions {
-  display: flex;
-  gap: 12px;
+.renewal-button {
+  width: 100%;
+  height: 52px !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 6px 18px rgba(103, 194, 58, 0.3) !important;
 }
 
-.path-config-section .path-actions .el-button {
-  flex: 1;
-  height: 48px;
-  font-size: 15px;
-  font-weight: 600;
-  border-radius: 10px;
-  border: none;
-  transition: all 0.3s ease;
-}
+/* 修正 */
+.text-success { color: #67c23a; }
+.text-danger { color: #f56c6c; }
 
-.select-path-btn {
-  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
-}
-
-.select-path-btn:hover {
-  background: linear-gradient(135deg, #40a9ff 0%, #1890ff 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
-}
-
-.clear-path-btn {
-  background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
-}
-
-.clear-path-btn:hover {
-  background: linear-gradient(135deg, #ff7875 0%, #ff4d4f 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
-}
-
-.priority-tip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #fff9e6 0%, #fef5d4 100%);
-  border: 2px solid #ffd666;
-  border-radius: 10px;
+:deep(.path-config-btn) {
+  padding: 4px 8px;
+  height: 26px;
   font-size: 13px;
-  color: #8c8c8c;
-  font-weight: 500;
 }
 
-.priority-tip .el-icon {
-  color: #faad14;
-  font-size: 16px;
+:deep(.el-progress-bar__outer) {
+  height: 4px !important;
 }
 
-.action-row {
-  width: 100%;
-}
-
-.action-card {
-  background: rgba(255, 255, 255, 0.95);
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-.action-card .card-header {
-  margin-bottom: 16px;
-}
-
-.action-button {
-  width: 100%;
-  height: 48px;
-  font-size: 16px;
-  font-weight: 600;
-  border-radius: 12px;
-  border: none;
-}
-
-.refresh-button {
-  background: #1890ff;
-  color: white;
-}
-
-.refresh-button:hover {
-  background: #40a9ff;
-}
-
-.refresh-button:disabled {
-  background: #d9d9d9;
-  color: #bfbfbf;
-}
-
-/* 续杯卡片特殊样式 */
-.renewal-card {
-  border-radius: 16px;
-  overflow: hidden;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
-}
-
-.renewal-card :deep(.el-card__body) {
-  padding: 0;
-}
-
-.renewal-card .card-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 24px 32px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  margin-bottom: 0;
-}
-
-.renewal-card .header-icon {
-  width: 60px;
-  height: 60px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  flex-shrink: 0;
-}
-
-.renewal-card .header-text {
-  flex: 1;
-}
-
-.renewal-card .main-title {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 700;
-  color: white;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.renewal-card .subtitle {
-  margin: 0;
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 400;
-}
-
-.renewal-card .renewal-content {
-  padding: 32px;
-}
-
-.renewal-card .action-section {
-  text-align: center;
-}
-
-.renewal-card .renewal-button {
-  width: 100%;
-  max-width: 300px;
-  height: 56px;
-  font-size: 18px;
-  font-weight: 600;
-  border-radius: 28px;
-  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
-  border: none;
-  color: white;
-  box-shadow: 0 4px 16px rgba(103, 194, 58, 0.4);
-  transition: all 0.3s ease;
-}
-
-.renewal-card .renewal-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(103, 194, 58, 0.5);
-  background: linear-gradient(135deg, #85ce61 0%, #67c23a 100%);
-}
-
-.renewal-card .renewal-button:active {
-  transform: translateY(0);
-}
-
-.renewal-card .renewal-button.is-loading {
-  background: linear-gradient(135deg, #a0cfff 0%, #909399 100%);
-}
-
-.renewal-card .renewal-button:disabled {
-  background: #d9d9d9;
-  color: #bfbfbf;
-  box-shadow: none;
-  transform: none;
-}
-
-.renewal-buttons {
-  display: flex;
-  gap: 12px;
-}
-
-.renewal-buttons .action-button {
-  flex: 1;
-}
-
-.renewal-buttons .el-button--primary {
-  background: #1890ff;
-}
-
-.renewal-buttons .el-button--danger {
-  background: #ff4d4f;
-}
-
-.renewal-buttons .el-button--primary:hover {
-  background: #40a9ff;
-}
-
-.renewal-buttons .el-button--danger:hover {
-  background: #ff7875;
-}
-
-.renewal-buttons .el-button:disabled {
-  background: #d9d9d9;
-  color: #bfbfbf;
-}
-
-/* 响应式设计 */
-@media (max-width: 1024px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-  
-  .main-content {
-    padding: 24px 16px;
-  }
-}
-
-@media (max-width: 768px) {
-  .app-header {
-    padding: 12px 16px;
-  }
-  
-  .header-content {
-    flex-direction: column;
-    gap: 12px;
-    text-align: center;
-  }
-  
-  .main-content {
-    padding: 16px;
-  }
-  
-  .status-row {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
-  
-  .validity-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .renewal-buttons {
-    flex-direction: column;
-  }
-}
-
-/* 动画效果 */
-.license-card,
-.action-card,
-.license-status-section,
-.license-validity-section {
-  transition: all 0.3s ease;
-}
-
-.license-card:hover,
-.action-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
-.action-button {
-  transition: all 0.3s ease;
-}
-
-.action-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* 加载状态 */
-.action-button.is-loading {
-  position: relative;
-  pointer-events: none;
-}
-
-/* 毛玻璃效果 */
-.app-header,
-.license-card,
-.action-card,
-.license-status-section,
-.license-validity-section {
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-/* 完全隐藏滚动条但保持滚动功能 */
-.main-content::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
-}
-
-/* 确保所有浏览器都隐藏滚动条 */
-.main-content {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
-}
-
-/* 更新对话框样式 */
-:deep(.update-dialog) {
-  max-width: 540px;
-  border-radius: 12px;
-}
-
-:deep(.update-dialog .el-message-box__header) {
-  padding: 20px 24px 12px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-:deep(.update-dialog .el-message-box__title) {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-}
-
-:deep(.update-dialog .el-message-box__content) {
-  padding: 20px 24px;
-}
-
-:deep(.update-dialog .el-message-box__message) {
-  line-height: 1.6;
-}
-
-:deep(.update-dialog .el-message-box__btns) {
-  padding: 12px 24px 20px;
-}
-
-:deep(.update-dialog .el-button) {
-  padding: 10px 24px;
-  border-radius: 8px;
+:deep(.status-tag) {
+  height: 26px;
+  padding: 0 8px;
   font-size: 14px;
-  font-weight: 500;
 }
 </style>
-

@@ -390,37 +390,21 @@ class CursorService {
       let commands = []
       switch (this.platform) {
         case 'win32':
-          // Windows: 温和地关闭Cursor进程，避免确认弹框
+          // Windows: 极速模式，仅强杀主程序，发完命令即走，0等待
           commands = [
-            // 先尝试温和关闭（发送关闭信号）
-            'taskkill /IM Cursor.exe 2>nul || echo "Cursor.exe not found"',
-            'taskkill /IM "Cursor Helper.exe" 2>nul || echo "Cursor Helper not found"',
-            'taskkill /IM "Cursor Helper (Renderer).exe" 2>nul || echo "Cursor Helper Renderer not found"',
-            'taskkill /IM "Cursor Helper (GPU).exe" 2>nul || echo "Cursor Helper GPU not found"',
-            'taskkill /IM "Cursor Helper (Plugin).exe" 2>nul || echo "Cursor Helper Plugin not found"',
-            // 等待3秒让进程自然关闭
-            'timeout /t 3 /nobreak >nul 2>&1',
-            // 如果还有残留进程，再强制终止
-            'taskkill /F /IM Cursor.exe 2>nul || echo "Cursor.exe already closed"',
-            'taskkill /F /IM "Cursor Helper.exe" 2>nul || echo "Cursor Helper already closed"',
-            'taskkill /F /IM "Cursor Helper (Renderer).exe" 2>nul || echo "Cursor Helper Renderer already closed"',
-            'taskkill /F /IM "Cursor Helper (GPU).exe" 2>nul || echo "Cursor Helper GPU already closed"',
-            'taskkill /F /IM "Cursor Helper (Plugin).exe" 2>nul || echo "Cursor Helper Plugin already closed"'
+            'taskkill /F /IM Cursor.exe 2>nul || echo "Cursor killed"'
           ]
           break
         case 'darwin':
+          // macOS: 极速模式，仅强杀主程序
           commands = [
-            'pkill -f "Cursor.app" || echo "Cursor.app not found"',
-            'pkill -f "Cursor Helper" || echo "Cursor Helper not found"',
-            'killall "Cursor" 2>/dev/null || echo "Cursor not found"'
+            'pkill -9 -f "Cursor.app" || killall -9 "Cursor" 2>/dev/null || echo "Darwin kill"'
           ]
           break
         case 'linux':
+          // Linux: 极速模式，仅强杀主程序
           commands = [
-            'pkill -f cursor || echo "cursor not found"',
-            'pkill -f Cursor || echo "Cursor not found"',
-            'killall cursor 2>/dev/null || echo "cursor not found"',
-            'killall Cursor 2>/dev/null || echo "Cursor not found"'
+            'pkill -9 -f [C]ursor || killall -9 cursor 2>/dev/null || echo "Linux kill"'
           ]
           break
         default:
@@ -430,31 +414,14 @@ class CursorService {
           }
       }
 
-      // 依次执行所有终止命令
-      for (let i = 0; i < commands.length; i++) {
-        try {
-          console.log(`🔪 执行终止命令 ${i + 1}/${commands.length}: ${commands[i].split(' ')[0]}...`)
-          const result = await api.execCommand(commands[i])
-          if (result.error) {
-            console.log(`⚠️ 命令执行完成 (某些进程可能不存在): ${result.stderr}`)
-          } else {
-            console.log(`✅ 命令执行成功: ${result.stdout}`)
-          }
-          // 移除多余等待，命令发出即继续
-        } catch (error) {
-          console.log(`⚠️ 命令执行完成 (某些进程可能不存在): ${error.message}`)
-        }
-      }
-
-      // 直接返回结果，不进行额外等待
-      const processCheck = await this.checkCursorProcess()
-      const isFullyClosed = !processCheck.running
-      console.log(isFullyClosed ? '✅ 进程关闭完成' : '⚠️ 可能仍有残留')
+      // 火力即走：发出杀进程命令后立即返回，不等待结果
+      const cmd = commands[0]
+      console.log('🔪 发送终止命令（不等待）:', cmd.split(' ')[0])
+      api.execCommandAsync(cmd)
 
       return {
-        success: isFullyClosed,
-        message: isFullyClosed ? 'All Cursor processes terminated completely' : 'Some processes may still be running',
-        processesFound: processCheck.processes || []
+        success: true,
+        message: 'Kill command sent (fire-and-forget)'
       }
     } catch (error) {
       console.error('❌ 关闭Cursor进程时出错:', error.message)
@@ -535,19 +502,23 @@ class CursorService {
     try {
       console.log('🔄 开始完整的机器ID重置流程（参考cursor-free-vip-main）...')
 
-      // ⚠️ 重要：检查 Cursor 是否正在运行
-      console.log('🔍 检查 Cursor 进程状态...')
-      const processStatus = await this.checkCursorProcess()
-      if (processStatus.running) {
-        console.error('❌ Cursor 正在运行，无法修改文件（文件被锁定）')
-        return {
-          success: false,
-          error: 'Cursor is running. Please close Cursor first.',
-          errorType: 'CURSOR_RUNNING',
-          message: 'Cursor正在运行，文件被锁定。请先关闭Cursor再重试。'
+      // ⚠️ 等待 Cursor 进程退出（配合 fire-and-forget 的 killCursorProcess）
+      console.log('🔍 等待 Cursor 进程退出...')
+      let isRunning = true
+      for (let i = 0; i < 6; i++) {
+        const processStatus = await this.checkCursorProcess()
+        if (!processStatus.running) {
+          isRunning = false
+          break
         }
+        console.log(`⏳ Cursor 仍在运行，等待退出 (${i + 1}/6)...`)
+        await new Promise(r => setTimeout(r, 500))
       }
-      console.log('✅ Cursor 未运行，可以继续')
+      if (isRunning) {
+        console.warn('⚠️ Cursor 仍未完全退出，尝试强制继续...')
+      } else {
+        console.log('✅ Cursor 已退出，可以继续')
+      }
 
       // 1. 生成新的所有ID（参考 totally_reset_cursor.py generate_new_ids）
       const newIds = this.generateAllMachineIds()
@@ -599,9 +570,27 @@ class CursorService {
         }
 
         // 写入新的 machineId（使用 devDeviceId）
-        await api.fsWriteFile(this.cursorPaths.machineId, newIds['telemetry.devDeviceId'], 'utf8')
-        console.log('✅ 新 machineId 文件已写入:', newIds['telemetry.devDeviceId'])
-        machineIdResult.success = true
+        try {
+          await api.fsWriteFile(this.cursorPaths.machineId, newIds['telemetry.devDeviceId'], 'utf8')
+          console.log('✅ 新 machineId 文件已写入:', newIds['telemetry.devDeviceId'])
+          machineIdResult.success = true
+        } catch (writeError) {
+          if ((writeError.message.includes('EPERM') || writeError.message.includes('EBUSY')) && this.platform === 'win32') {
+            console.warn('⚠️ machineId 文件被锁定，尝试解锁...')
+            // 使用与 storage.json 相同的解锁机制
+            const unlockResult = await window.electronAPI.unlockFile(this.cursorPaths.machineId)
+            if (unlockResult.success) {
+              console.log('✅ 文件解锁成功，重试写入...')
+              await api.fsWriteFile(this.cursorPaths.machineId, newIds['telemetry.devDeviceId'], 'utf8')
+              console.log('✅ 新 machineId 文件重试写入成功:', newIds['telemetry.devDeviceId'])
+              machineIdResult.success = true
+            } else {
+              throw writeError
+            }
+          } else {
+            throw writeError
+          }
+        }
       } catch (error) {
         console.error('❌ machineId 文件更新失败:', error.message)
         console.warn('💡 将继续执行注册表更新')
@@ -680,7 +669,7 @@ class CursorService {
         }
       }
     } catch (error) {
-      console.error('❌ 机器ID重置失败:', error)
+      console.error('❌ :', error)
       return {
         success: false,
         error: error.message

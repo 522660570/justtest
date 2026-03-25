@@ -270,7 +270,7 @@ async function createWindow() {
     if (DEBUG_MODE) {
       console.log('🔧 调试功能已启用: F12 打开开发者工具, Ctrl+Shift+D 打开调试面板')
 
-      // F12 打开/关闭开发者工具
+      // F12 打开/关闭开发者工具, Ctrl+Shift+D 打开调试面板
       mainWindow.webContents.on('before-input-event', (event, input) => {
         if (input.key === 'F12') {
           event.preventDefault()
@@ -279,6 +279,11 @@ async function createWindow() {
           } else {
             mainWindow.webContents.openDevTools()
           }
+        }
+        // Ctrl+Shift+D 切换调试面板
+        if (input.control && input.shift && input.key.toLowerCase() === 'd') {
+          event.preventDefault()
+          mainWindow.webContents.send('toggle-debug-panel')
         }
       })
 

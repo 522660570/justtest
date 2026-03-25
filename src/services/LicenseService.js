@@ -29,28 +29,28 @@ class LicenseService {
           error: `客户端版本过低(${APP_VERSION})，请更新到≥${MIN_REQUIRED_VERSION}`
         }
       }
-      
+
       // 获取真实的设备MAC地址
       const macAddress = await this.deviceService.getMacAddress()
       console.log('🔧 设备MAC地址:', macAddress)
-      
+
       // 调用后端API
       const response = await fetch(`${this.apiBaseUrl}/getInfoByCode/${licenseCode}/${macAddress}`, {
         method: 'GET',
         headers: versionHeaders({ 'Content-Type': 'application/json' })
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
-      
+
       const result = await response.json()
-      
+
       // 适配后端返回的数据格式
       if (result.code === 1) {
         // 转换后端数据格式为前端期望的格式
         const licenseData = result.data
-        
+
         // 优先使用后端返回的status字段，如果没有则根据valid字段判断
         let status = 'invalid'
         if (licenseData.status) {
@@ -60,11 +60,11 @@ class LicenseService {
         } else if (licenseData.remainingDays && licenseData.remainingDays < 0) {
           status = 'expired'
         }
-        
+
         console.log('🔧 后端返回的授权数据:', licenseData)
         console.log('🔧 解析的状态:', status)
         console.log('🔧 授权码类型:', licenseData.licenseType, licenseData.licenseTypeDesc)
-        
+
         // 构建返回数据，支持天卡和次卡
         const responseData = {
           status: status,
@@ -72,9 +72,10 @@ class LicenseService {
           usagePercentage: licenseData.usagePercentage || 0,
           cardType: licenseData.licenseType || 1, // 授权码类型：1=天卡, 2=次卡
           cardTypeDesc: licenseData.licenseTypeDesc || '天卡',
-          message: licenseData.message || ''
+          message: licenseData.message || '',
+          todaySwitchCount: licenseData.todaySwitchCount || 0
         }
-        
+
         // 天卡：添加天数相关字段（1=天卡）
         if (licenseData.licenseType === 1 || !licenseData.licenseType) {
           responseData.daysRemaining = licenseData.remainingDays || licenseData.daysRemaining || 0
@@ -87,7 +88,7 @@ class LicenseService {
           responseData.usedSwitches = licenseData.usedSwitches || 0
           responseData.remainingSwitches = licenseData.remainingSwitches || 0
         }
-        
+
         return {
           success: true,
           data: responseData
@@ -98,7 +99,7 @@ class LicenseService {
           error: result.message || '授权码验证失败'
         }
       }
-      
+
     } catch (error) {
       console.error('❌ 验证授权码失败:', error)
       return {
@@ -167,7 +168,7 @@ class LicenseService {
       remainingText = `${daysRemaining || 0}天`
     } else if (status === 'expired') {
       statusColor = 'danger'
-      
+
       if (cardType === 2) {
         statusText = '已过期次卡'
         expiryText = '次数已用完'

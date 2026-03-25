@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 调试模式API
   getDebugMode: () => ipcRenderer.invoke('get-debug-mode'),
+  onToggleDebugPanel: (callback) => ipcRenderer.on('toggle-debug-panel', callback),
 
   // Cursor版本号API
   getCursorVersion: () => ipcRenderer.invoke('get-cursor-version'),
