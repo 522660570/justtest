@@ -430,21 +430,13 @@ export default {
           console.warn('机器码重置发生警告 (此步骤可能被跳过): ' + resetRes.error)
         }
 
-        const sqlitePath = cursorService.cursorPaths.sqlite
-        const queries = [
-          { query: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedEmail', newAccount.email] },
-          { query: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedSignUpType', 'Auth_0'] },
-          { query: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['WorkosCursorSessionToken', sessionToken] }
-        ]
+        // 映射一下兼容旧格式的数据
+        newAccount.sessionToken = sessionToken
         
-        if (window.electronAPI) {
-          if (window.electronAPI.sqliteBatchRun) {
-            await window.electronAPI.sqliteBatchRun(sqlitePath, queries)
-          } else {
-            for (const q of queries) {
-              await window.electronAPI.sqliteQuery(sqlitePath, q.query, q.params)
-            }
-          }
+        // 调用统筹的账号更新方法（内部包括所有必要 token 的插入与处理）
+        const updateRes = await cursorService.updateAccountStorage(newAccount)
+        if (!updateRes.success) {
+          throw new Error('更新账号存储失败: ' + updateRes.error)
         }
 
         await accountService.confirmAccountSwitch(licenseCode.value, newAccount.email)
