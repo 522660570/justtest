@@ -4,7 +4,7 @@
   "description": "Cursor AI账号管理工具",
   "author": "Li <522660570@qq.com>",
   "main": "electron/main.js",
-  "debugMode": true,
+  "debugMode": false,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
