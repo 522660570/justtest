@@ -15,18 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: |
-          npm cache clean --force
-          npm install
+        run: npm install
 
       - name: Build Tauri
         run: npm run tauri build
@@ -34,18 +30,17 @@ jobs:
       - name: Create portable
         shell: pwsh
         run: |
-          $exePath = "src-tauri\target\release\app.exe"
-          if (Test-Path $exePath) {
-              $size = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
-              Write-Host "File size: $size MB"
-              New-Item -ItemType Directory -Force -Path "dist-portable" | Out-Null
-              Copy-Item $exePath "dist-portable\Cursor续杯_portable.exe"
+          $exe = "src-tauri\target\release\app.exe"
+          if (Test-Path $exe) {
+              $mb = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+              Write-Host "Size: $mb MB"
+              New-Item -Force -Type Directory "dist-portable" | Out-Null
+              Copy-Item $exe "dist-portable\Cursor续杯_portable.exe"
           }
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: windows-x64
+          name: windows
           path: |
             dist-portable/*.exe
             src-tauri/target/release/bundle/nsis/*.exe
@@ -58,27 +53,15 @@ jobs:
         target: [x86_64-apple-darwin, aarch64-apple-darwin]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Install dependencies
-        run: |
-          npm cache clean --force
-          npm install
-
-      - name: Build Tauri
-        run: npm run tauri build -- --target ${{ matrix.target }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - run: npm install
+      - run: npm run tauri build -- --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.target }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
@@ -87,117 +70,71 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
-        run: |
+      - uses: dtolnay/rust-toolchain@stable
+      - run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-
-      - name: Install dependencies
-        run: |
-          npm cache clean --force
-          npm install
-
-      - name: Build Tauri
-        run: npm run tauri build
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: npm install
+      - run: npm run tauri build
+      - uses: actions/upload-artifact@v4
         with:
-          name: linux-x64
+          name: linux
           path: |
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/deb/*.deb
 
-  create-release:
+  release:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
       - name: Get version
-        id: version
+        id: ver
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Prepare files
+      - name: Prepare
         run: |
-          mkdir -p release
+          mkdir release
           
           # Windows portable
-          if [ -f artifacts/windows-x64/Cursor续杯_portable.exe ]; then
-            cp artifacts/windows-x64/Cursor续杯_portable.exe "release/Cursor续杯_${{ steps.version.outputs.version }}_windows_portable.exe"
-          fi
+          cp artifacts/windows/Cursor续杯_portable.exe "release/Cursor续杯_${{ steps.ver.outputs.version }}_portable.exe" 2>/dev/null || true
           
           # Windows NSIS
-          for f in artifacts/windows-x64/*.exe; do
-            if [[ "$f" != *"portable"* ]]; then
-              cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_windows_setup.exe" 2>/dev/null || true
-              break
-            fi
-          done
+          find artifacts/windows -name "*.exe" ! -name "*portable*" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}_setup.exe" \; -quit 2>/dev/null || true
           
           # Windows MSI
-          for f in artifacts/windows-x64/*.msi; do
-            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_windows.msi" 2>/dev/null || true
-            break
-          done
+          find artifacts/windows -name "*.msi" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}.msi" \; -quit 2>/dev/null || true
           
           # macOS
-          for f in artifacts/macos-x86_64-apple-darwin/*.dmg; do
-            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_macos_x64.dmg" 2>/dev/null || true
-            break
-          done
-          
-          for f in artifacts/macos-aarch64-apple-darwin/*.dmg; do
-            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_macos_arm64.dmg" 2>/dev/null || true
-            break
-          done
+          find artifacts/macos-x86_64-apple-darwin -name "*.dmg" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}_macos_x64.dmg" \; -quit 2>/dev/null || true
+          find artifacts/macos-aarch64-apple-darwin -name "*.dmg" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}_macos_arm64.dmg" \; -quit 2>/dev/null || true
           
           # Linux
-          for f in artifacts/linux-x64/*.AppImage; do
-            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_linux.AppImage" 2>/dev/null || true
-            break
-          done
+          find artifacts/linux -name "*.AppImage" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}_linux.AppImage" \; -quit 2>/dev/null || true
           
           ls -lh release/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+          
+      - uses: softprops/action-gh-release@v2
         with:
           files: release/*
           body: |
-            ## Cursor续杯 ${{ steps.version.outputs.version }}
+            ## Cursor续杯 ${{ steps.ver.outputs.version }}
             
             ### Windows (推荐便携版)
-            - `xxx_portable.exe` - 便携版 (~20MB) - 双击即用，无需安装 ⭐
+            - `xxx_portable.exe` - 便携版 (~20MB) 双击即用 ⭐
             - `xxx_setup.exe` - 安装版 (~5MB)
-            - `xxx.msi` - MSI 安装包 (~8MB)
             
             ### macOS
-            - `xxx_macos_x64.dmg` - Intel Mac
-            - `xxx_macos_arm64.dmg` - Apple Silicon (M1/M2/M3)
+            - `xxx_macos_x64.dmg` - Intel
+            - `xxx_macos_arm64.dmg` - Apple Silicon
             
             ### Linux
             - `xxx_linux.AppImage` - AppImage
-            
-            ### 使用方法
-            
-            **便携版**: 双击运行，首次需要安装 [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703)
-            
-            **安装版**: 运行安装程序
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
