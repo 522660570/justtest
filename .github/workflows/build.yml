@@ -1,0 +1,66 @@
+name: Build
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+          - platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            bundles: dmg
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+
+      - name: install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: install frontend dependencies
+        run: npm ci
+
+      - name: build Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "Cursor续杯 v__VERSION__"
+          releaseBody: "见 assets 下载对应平台的安装包"
+          releaseDraft: true
+          prerelease: false
+          args: --bundles ${{ matrix.bundles }}
