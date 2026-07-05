@@ -34,6 +34,7 @@
     "build:all-full": "npm run build && electron-builder -mwl --x64 --arm64",
     "check-icons": "node scripts/convert-icons.js",
     "tauri-build:win": "tauri build --bundles nsis,msi",
+    "tauri-build:portable": "powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1",
     "tauri-build:mac-x64": "tauri build --bundles dmg --target x86_64-apple-darwin",
     "tauri-build:mac-arm64": "tauri build --bundles dmg --target aarch64-apple-darwin",
     "tauri-build:linux": "tauri build --bundles appimage,deb",
