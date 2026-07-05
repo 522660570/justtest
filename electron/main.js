@@ -908,289 +908,73 @@ const deleteFileWithRetry = async (filePath, maxRetries = 3) => {
 
 ipcMain.handle('sqlite-query', async (event, dbPath, query, params = []) => {
   const startTime = Date.now()
-
+  let db;
   try {
-    // 使用 sql.js（纯 JavaScript 实现，无需编译，跨平台零问题）
     console.log('🗄️ SQLite 查询开始:', query.substring(0, 50))
-
-    // 动态加载 sql.js（支持打包后的路径）
-    let initSqlJs
-    try {
-      // 尝试直接 require
-      initSqlJs = require('sql.js')
-    } catch (error) {
-      // 如果失败，尝试从 unpacked 路径加载
-      const sqlJsPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js')
-        : path.join(__dirname, '..', 'node_modules', 'sql.js')
-      console.log('尝试从路径加载 sql.js:', sqlJsPath)
-      initSqlJs = require(sqlJsPath)
+    const Database = require('better-sqlite3')
+    db = new Database(dbPath, { timeout: 5000 })
+    
+    let result;
+    const qLower = query.toLowerCase().trim()
+    
+    if (qLower.startsWith('select')) {
+      const stmt = db.prepare(query)
+      result = stmt.all(...params)
+    } else {
+      const stmt = db.prepare(query)
+      const info = stmt.run(...params)
+      result = { changes: info.changes, lastID: info.lastInsertRowid }
     }
-
-    const SQL = await initSqlJs()
-    console.log('✅ sql.js 模块加载成功')
-
-    // 辅助函数：删除 WAL 和 SHM 文件（使用带重试的版本）
-    const deleteWalFiles = async (basePath) => {
-      await deleteFileWithRetry(`${basePath}-wal`)
-      await deleteFileWithRetry(`${basePath}-shm`)
-    }
-
-    // ⚠️ 关键修复：在读取数据库前，主动清理 WAL/SHM 文件
-    // 这解决了“首次成功，后续失败”的问题，因为后续运行时存在的旧 WAL 文件会导致冲突
-    await deleteWalFiles(dbPath)
-
-    // 定义恢复函数
-    const recoverDatabase = async (filePath) => {
-      console.warn('⚠️ 正在执行数据库恢复流程...')
-
-      // 1. 尝试备份
-      try {
-        const backupPath = `${filePath}.corrupt.${Date.now()}`
-        await fs.copyFile(filePath, backupPath)
-        console.log('✅ 已备份损坏的数据库到:', backupPath)
-      } catch (backupError) {
-        if (backupError.code !== 'ENOENT') {
-          console.error('❌ 备份损坏数据库失败:', backupError)
-        }
-      }
-
-      // 2. 删除损坏的主文件
-      try {
-        await fs.unlink(filePath)
-        console.log('✅ 已删除损坏的数据库文件')
-      } catch (unlinkError) {
-        if (unlinkError.code !== 'ENOENT') {
-          console.warn('⚠️ 删除损坏数据库失败:', unlinkError)
-        }
-      }
-
-      // 3. 关键：删除关联的 WAL 和 SHM 文件
-      await deleteWalFiles(filePath)
-
-      const newDb = new SQL.Database()
-      // 确保基础表结构存在
-      try {
-        newDb.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
-        console.log('✅ 已初始化新数据库的 ItemTable 表结构')
-      } catch (e) {
-        console.warn('⚠️ 初始化表结构失败:', e)
-      }
-      return newDb
-    }
-
-    // 读取数据库文件
-    let db
-    let buffer
-
-    try {
-      buffer = await fs.readFile(dbPath)
-      try {
-        db = new SQL.Database(buffer)
-        console.log('✅ 数据库文件已加载到内存')
-      } catch (dbError) {
-        // 打开时检查损坏
-        if (dbError.message.includes('malformed') ||
-          dbError.message.includes('CORRUPT') ||
-          dbError.message.includes('unreadable')) {
-          console.warn('⚠️ 打开时检测到数据库损坏:', dbError.message)
-          db = await recoverDatabase(dbPath)
-        } else {
-          throw dbError
-        }
-      }
-    } catch (readError) {
-      if (readError.code === 'ENOENT') {
-        console.log('⚠️ 数据库文件不存在，将创建新数据库')
-        db = new SQL.Database()
-        // 确保新库有表结构
-        try {
-          db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
-        } catch (e) { }
-      } else {
-        throw readError
-      }
-    }
-
-    let result
-
-    // 执行查询的内部函数
-    const executeQuery = (database, q, p) => {
-      const qLower = q.toLowerCase().trim()
-      if (qLower.startsWith('select')) {
-        const stmt = database.prepare(q)
-        stmt.bind(p)
-        const rows = []
-        while (stmt.step()) {
-          rows.push(stmt.getAsObject())
-        }
-        stmt.free()
-        return { type: 'select', data: rows }
-      } else if (qLower === 'vacuum') {
-        database.run('VACUUM')
-        return { type: 'run', data: { changes: 0 } }
-      } else {
-        database.run(q, p)
-        return { type: 'run', data: { changes: database.getRowsModified(), lastID: 0 } }
-      }
-    }
-
-    try {
-      try {
-        // 第一次尝试执行
-        const execResult = executeQuery(db, query, params)
-        result = execResult.data
-        console.log(`✅ 查询执行成功 (${execResult.type})`)
-
-      } catch (queryError) {
-        // 运行时检查损坏
-        if (queryError.message.includes('malformed') ||
-          queryError.message.includes('CORRUPT') ||
-          queryError.message.includes('unreadable')) {
-
-          console.warn('⚠️ 查询执行期间检测到数据库损坏:', queryError.message)
-
-          // 关闭旧连接
-          try { db.close() } catch (e) { }
-
-          // 恢复数据库
-          db = await recoverDatabase(dbPath)
-
-          console.log('🔄 正在重试查询...')
-          // 在新数据库上重试
-          const retryResult = executeQuery(db, query, params)
-          result = retryResult.data
-          console.log('✅ 重试查询成功')
-
-        } else {
-          throw queryError
-        }
-      }
-
-      // 保存更改回文件（sql.js 是内存数据库）
-      if (result && !query.toLowerCase().trim().startsWith('select')) {
-        // ⚠️ 仅 Windows：切换日志模式为 DELETE，防止 WAL 残留导致数据库损坏
-        // Mac 上 WAL 机制正常工作，不需要修改
-        if (process.platform === 'win32') {
-          try {
-            db.run("PRAGMA journal_mode=DELETE")
-          } catch (e) {
-            console.warn('⚠️ 切换 journal_mode 失败:', e.message)
-          }
-        }
-
-        const data = db.export()
-        const dataBuffer = Buffer.from(data)
-        await writeFileWithRetry(dbPath, dataBuffer)
-
-        // ⚠️ 关键：写入主文件后，必须清理旧的 WAL/SHM 文件
-        await deleteWalFiles(dbPath)
-
-        console.log('✅ 数据库更改已保存到文件 (已清理 WAL/SHM)')
-      }
-
-    } finally {
-      try { db.close() } catch (e) { }
-    }
-
-    const duration = Date.now() - startTime
-    console.log(`✅ SQLite 查询总耗时: ${duration}ms`)
-
+    
+    console.log(`✅ SQLite 查询总耗时: ${Date.now() - startTime}ms`)
     return result
   } catch (error) {
     console.error('❌ SQLite 查询错误:', error)
-    console.error('   查询:', query)
-    console.error('   参数:', params)
-    console.error('   数据库路径:', dbPath)
     throw new Error(`SQLite 错误: ${error.message}`)
+  } finally {
+    if (db) {
+      try { db.close() } catch (e) { console.error('关闭数据库失败:', e) }
+    }
   }
 })
 
-// SQLite 批量执行 - 单次文件读写完成多条 SQL（避免 Windows 文件锁竞态）
+// SQLite 批量执行
 ipcMain.handle('sqlite-batch-run', async (event, dbPath, statements) => {
   const startTime = Date.now()
+  let db;
   try {
     console.log(`🗄️ SQLite 批量执行开始: ${statements.length} 条语句`)
-
-    let initSqlJs
-    try {
-      initSqlJs = require('sql.js')
-    } catch (error) {
-      const sqlJsPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js')
-        : path.join(__dirname, '..', 'node_modules', 'sql.js')
-      initSqlJs = require(sqlJsPath)
-    }
-    const SQL = await initSqlJs()
-
-    // 读取前清理 WAL/SHM（带重试）
-    await deleteFileWithRetry(`${dbPath}-wal`)
-    await deleteFileWithRetry(`${dbPath}-shm`)
-
-    let db
-    try {
-      const buffer = await fs.readFile(dbPath)
-      try {
-        db = new SQL.Database(buffer)
-      } catch (dbError) {
-        if (dbError.message.includes('malformed') || dbError.message.includes('CORRUPT')) {
-          console.warn('⚠️ 数据库损坏，尝试重建...')
-          try { await fs.copyFile(dbPath, `${dbPath}.corrupt.${Date.now()}`) } catch (e) { }
-          try { await deleteFileWithRetry(dbPath) } catch (e) { }
-          await deleteFileWithRetry(`${dbPath}-wal`)
-          await deleteFileWithRetry(`${dbPath}-shm`)
-          db = new SQL.Database()
-          db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
-        } else {
-          throw dbError
-        }
-      }
-    } catch (readError) {
-      if (readError.code === 'ENOENT') {
-        db = new SQL.Database()
-        db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)")
-      } else {
-        throw readError
-      }
-    }
-
-    try {
-      const results = []
-      for (const stmt of statements) {
+    const Database = require('better-sqlite3')
+    db = new Database(dbPath, { timeout: 5000 })
+    
+    const results = []
+    
+    // 使用事务包装批量执行
+    const transaction = db.transaction((stmts) => {
+      for (const stmtObj of stmts) {
         try {
-          db.run(stmt.sql, stmt.params || [])
-          results.push({ success: true, changes: db.getRowsModified() })
+          const stmt = db.prepare(stmtObj.sql)
+          const info = stmt.run(...(stmtObj.params || []))
+          results.push({ success: true, changes: info.changes })
         } catch (stmtError) {
           console.error(`❌ 批量语句执行失败: ${stmtError.message}`)
           results.push({ success: false, error: stmtError.message })
         }
       }
-
-      // ⚠️ 仅 Windows：切换日志模式为 DELETE，防止 WAL 文件残留导致损坏
-      // Mac 上 WAL 机制正常工作，不需要修改
-      if (process.platform === 'win32') {
-        try {
-          db.run("PRAGMA journal_mode=DELETE")
-        } catch (e) {
-          console.warn('⚠️ 切换 journal_mode 失败:', e.message)
-        }
-      }
-
-      const data = db.export()
-      const dataBuffer = Buffer.from(data)
-      await writeFileWithRetry(dbPath, dataBuffer)
-      await deleteFileWithRetry(`${dbPath}-wal`)
-      await deleteFileWithRetry(`${dbPath}-shm`)
-
-      const successCount = results.filter(r => r.success).length
-      console.log(`✅ SQLite 批量执行完成: ${Date.now() - startTime}ms, ${successCount}/${results.length} 成功`)
-      return { success: successCount > 0, results }
-    } finally {
-      try { db.close() } catch (e) { }
-    }
+    })
+    
+    transaction(statements)
+    
+    const successCount = results.filter(r => r.success).length
+    console.log(`✅ SQLite 批量执行完成: ${Date.now() - startTime}ms, ${successCount}/${results.length} 成功`)
+    return { success: successCount > 0, results }
   } catch (error) {
     console.error('❌ SQLite 批量执行错误:', error)
     throw new Error(`SQLite 批量错误: ${error.message}`)
+  } finally {
+    if (db) {
+      try { db.close() } catch (e) { console.error('关闭数据库失败:', e) }
+    }
   }
 })
 

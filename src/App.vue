@@ -2,6 +2,13 @@
   <div id="app">
     <!-- 自定义标题栏 -->
     <CustomTitleBar />
+
+    <!-- 用户协议弹窗 - 首次打开时强制显示 -->
+    <UserAgreementDialog
+      :visible="showAgreementDialog"
+      @agree="handleAgreementAgree"
+      @disagree="handleAgreementDisagree"
+    />
     
     <!-- 机器码调试面板 - 仅在调试模式下可用 -->
     <el-dialog
@@ -105,12 +112,12 @@
                     placeholder="请输入授权码"
                     size="large"
                     :disabled="loading.license"
-                    @keyup.enter="validateLicense"
+                    @keyup.enter="() => validateLicense(true)"
                   >
                     <template #append>
                       <el-button
                         type="primary"
-                        @click="validateLicense"
+                        @click="() => validateLicense(true)"
                         :loading="loading.license"
                       >
                         验证
@@ -236,6 +243,10 @@
                     <span class="account-label">今日换号次数</span>
                     <span class="account-value switch-count">{{ todaySwitchCount }} 次</span>
                   </div>
+                  <div class="account-item" v-if="quotaFull">
+                    <span class="account-label">额度状态</span>
+                    <span class="account-value" style="color: #f56c6c;">已用完，请续杯</span>
+                  </div>
                 </div>
               </div>
 
@@ -258,6 +269,23 @@
                 </div>
               </div>
 
+              <!-- 无感换号开关 -->
+              <div class="seamless-toggle-container">
+                <div class="seamless-toggle-row">
+                  <div class="seamless-toggle-label">
+                    <span class="label-text">无感换号</span>
+                    <span class="label-desc">额度用完后自动续杯</span>
+                  </div>
+                  <el-switch
+                    v-model="seamlessEnabled"
+                    :disabled="!isLicenseValid"
+                    active-color="#13ce66"
+                    inactive-color="#dcdfe6"
+                    @change="handleSeamlessToggle"
+                  />
+                </div>
+              </div>
+
               <!-- 一键续杯大按钮 -->
               <div class="renewal-container">
                 <el-button
@@ -266,7 +294,7 @@
                   @click="renewPro"
                   :loading="loading.operations"
                   class="renewal-button"
-                  :disabled="!isLicenseValid"
+                  :disabled="!isLicenseValid || seamlessEnabled"
                 >
                   <el-icon v-if="!loading.operations"><MagicStick /></el-icon>
                   <span v-if="loading.operations">正在续杯中...</span>
@@ -293,14 +321,16 @@ import DeviceService from './services/DeviceService'
 import VersionService from './services/VersionService'
 import CustomTitleBar from './components/CustomTitleBar.vue'
 import MachineIdDebug from './components/MachineIdDebug.vue'
+import UserAgreementDialog from './components/UserAgreementDialog.vue'
 import { getDefaultPurchaseUrl, getPurchaseMessage } from './config/purchase.js'
-import { API_CONFIG, getApiUrl, APP_VERSION } from './config/api.js'
+import { API_CONFIG, getApiUrl, getAccountByCodeUrl, APP_VERSION } from './config/api.js'
 
 export default {
   name: 'App',
   components: {
     CustomTitleBar,
-    MachineIdDebug
+    MachineIdDebug,
+    UserAgreementDialog
   },
   setup() {
     // 🔧 响应式数据
@@ -310,10 +340,16 @@ export default {
     const debugMode = ref(false)
     const showDebugPanel = ref(false)
     const showPathDialog = ref(false)
+    const showAgreementDialog = ref(false)
     const faqUrl = ref('https://www.yuque.com/u65041907/qqq1xv/esbwnffw2qt4sfof?singleDoc# 《常见问题》')
     const cursorExecutablePath = ref('')
     const cursorEditorVersion = ref('未知')
     const appVersion = ref(APP_VERSION || '1.7.1')
+    const encryptionEnabled = ref(false)
+    const seamlessEnabled = ref(false)
+    let autoSwitchInProgress = false
+    
+    const SEAMLESS_STORAGE_KEY = 'seamless_mode_enabled'
     
     const loading = reactive({
       license: false,
@@ -323,6 +359,8 @@ export default {
       pathSelection: false,
       diagnosis: false
     })
+
+    const quotaFull = ref(false)
 
     const currentAccount = reactive({
       loading: false,
@@ -389,15 +427,24 @@ export default {
       }
     }
 
-    const validateLicense = async () => {
+    const validateLicense = async (fromUserClick = false) => {
       if (!licenseCode.value.trim()) return ElMessage.warning('请输入授权码')
+      const prevCode = licenseData.value?.code || ''
       loading.license = true
       try {
         const result = await licenseService.validateLicense(licenseCode.value)
         if (result.success) {
           licenseData.value = result.data
           await storageService.saveLicenseCode(licenseCode.value)
-          ElMessage.success('✅ 授权码验证成功')
+          // 只有用户手动点击"验证"按钮时才关闭无感换号
+          if (fromUserClick && seamlessEnabled.value) {
+            seamlessEnabled.value = false
+            try { localStorage.setItem(SEAMLESS_STORAGE_KEY, 'false') } catch (_) {}
+            ElMessage.info('检测到授权码验证，已自动关闭无感换号')
+          }
+          if (fromUserClick) {
+            ElMessage.success('✅ 授权码验证成功')
+          }
         } else {
           ElMessage.error('❌ ' + result.error)
         }
@@ -412,54 +459,148 @@ export default {
       if (!isLicenseValid.value) return ElMessage.warning('请先激活有效的授权码')
       loading.operations = true
       try {
-        await cursorService.killCursorProcess()
-
+        const macAddress = await deviceService.getMacAddress()
         const oldEmail = currentAccount.email || 'no-current-account'
-        const accountRes = await accountService.getAccountByCode(licenseCode.value, oldEmail)
-        if (!accountRes || !accountRes.success || !accountRes.data) {
-          ElMessage.error('❌ 获取新账号失败: ' + (accountRes?.error || '未知错误'))
-          loading.operations = false
-          return
-        }
-        
-        const newAccount = accountRes.data
-        const sessionToken = newAccount.sessionToken || newAccount.token || newAccount.WorkosCursorSessionToken
+        const apiUrl = getAccountByCodeUrl(licenseCode.value, macAddress, oldEmail)
 
+        let accessToken, refreshToken, email, sessionToken
+
+        if (encryptionEnabled.value) {
+          const accountRes = await window.electronAPI.fetchAccountEncrypted(apiUrl)
+          if (!accountRes || !accountRes.success || !accountRes.accessToken) {
+            ElMessage.error('❌ 获取新账号失败')
+            loading.operations = false
+            return
+          }
+          accessToken = accountRes.accessToken
+          refreshToken = accountRes.refreshToken
+          email = accountRes.email
+          sessionToken = ''
+        } else {
+          const accountRes = await accountService.getAccountByCode(licenseCode.value, oldEmail)
+          if (!accountRes || !accountRes.success || !accountRes.data) {
+            ElMessage.error('❌ 获取新账号失败: ' + (accountRes?.error || '未知错误'))
+            loading.operations = false
+            return
+          }
+          const newAccount = accountRes.data
+          email = newAccount.email
+          accessToken = newAccount.accessToken || ''
+          refreshToken = newAccount.refreshToken || accessToken || ''
+          sessionToken = newAccount.sessionToken || newAccount.token || newAccount.WorkosCursorSessionToken
+        }
+
+        // ── Step 1: Write auth to SQLite (state.vscdb) ──
+        if (!cursorService.cursorPaths) await cursorService.initialize()
+        const sqlitePath = cursorService.cursorPaths?.sqlite
+        if (sqlitePath) {
+          const queries = [
+            { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedEmail', email] },
+            { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedSignUpType', 'Auth_0'] },
+            { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/isAuthenticated', 'true'] },
+            { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursor.email', email] },
+            { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursor.accessToken', accessToken] },
+          ]
+          if (accessToken) {
+            queries.push({ sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/accessToken', accessToken] })
+            queries.push({ sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/refreshToken', refreshToken] })
+          }
+          if (window.electronAPI?.sqliteBatchRun) {
+            await window.electronAPI.sqliteBatchRun(sqlitePath, queries)
+          }
+        }
+
+        // ── Step 2: Write auth to storage.json ──
+        const storagePath = cursorService.cursorPaths?.storage
+        if (storagePath && window.electronAPI?.fsReadFile && window.electronAPI?.fsWriteFile) {
+          try {
+            const raw = await window.electronAPI.fsReadFile(storagePath)
+            const config = JSON.parse(raw)
+            Object.assign(config, {
+              'cursorAuth/cachedEmail': email,
+              'cursorAuth/accessToken': accessToken,
+              'cursorAuth/refreshToken': refreshToken,
+              'cursorAuth/cachedSignUpType': 'Auth_0',
+              'cursor.email': email,
+              'cursor.accessToken': accessToken,
+            })
+            await window.electronAPI.fsWriteFile(storagePath, JSON.stringify(config, null, 4))
+          } catch (e) {
+            console.warn('storage.json 写入失败（可跳过）:', e)
+          }
+        }
+
+        // ── Step 3: Reset machine IDs ──
         const resetRes = await cursorService.resetMachineId()
         if (!resetRes.success) {
-          console.warn('机器码重置发生警告 (此步骤可能被跳过): ' + resetRes.error)
+          console.warn('机器码重置警告:', resetRes.error)
         }
 
-        // 映射一下兼容旧格式的数据
-        newAccount.sessionToken = sessionToken
-        
-        // 调用统筹的账号更新方法（内部包括所有必要 token 的插入与处理）
-        const updateRes = await cursorService.updateAccountStorage(newAccount)
-        if (!updateRes.success) {
-          throw new Error('更新账号存储失败: ' + updateRes.error)
+        // ── Step 4: Seamless switch ──
+        // Start HTTP server (always needed for injection script to poll)
+        if (window.electronAPI?.startHttpServer) {
+          await window.electronAPI.startHttpServer(36529)
         }
 
-        await accountService.confirmAccountSwitch(licenseCode.value, newAccount.email)
-        await cursorService.startCursor()
+        // Check if workbench injection is already loaded in Cursor
+        const seamlessStatus = window.electronAPI?.getSeamlessStatus
+          ? await window.electronAPI.getSeamlessStatus()
+          : { injected: false }
 
-        console.log('🚀 续杯换号成功！')
-        ElMessageBox.confirm(
-          '续杯换号已完成，Cursor 正在启动。建议手动检查一下 Cursor 登录状态。',
-          '🚀 续杯换号成功',
-          {
-            confirmButtonText: '查看常见问题',
-            cancelButtonText: '知道了',
-            type: 'success'
+        if (!seamlessStatus.injected) {
+          // First time: inject workbench + restart Cursor to load the injection script
+          if (window.electronAPI?.injectWorkbench) {
+            await window.electronAPI.injectWorkbench()
           }
-        ).then(() => {
-          openFaqUrl()
-        }).catch(() => {})
+          if (window.electronAPI?.pushPendingSwitch) {
+            await window.electronAPI.pushPendingSwitch(accessToken, refreshToken, email, sessionToken)
+          }
+          ElMessage.success('✅ 换号成功！首次需要重启 Cursor 以激活无感换号...')
+          
+          // 首次注入：检查 Cursor 是否在运行
+          if (window.electronAPI?.checkCursorProcess) {
+            const status = await window.electronAPI.checkCursorProcess()
+            if (status.running) {
+              // Cursor 正在运行 → 重启以加载注入脚本
+              if (window.electronAPI?.reloadCursorWindow) {
+                await window.electronAPI.reloadCursorWindow()
+              }
+            } else {
+              // Cursor 未运行 → 直接启动
+              if (window.electronAPI?.startCursor) {
+                await window.electronAPI.startCursor()
+                ElMessage.info('Cursor 未运行，正在启动...')
+              }
+            }
+          }
+        } else {
+          // Subsequent times: just push tokens, injection script picks up in 1 second
+          if (window.electronAPI?.pushPendingSwitch) {
+            await window.electronAPI.pushPendingSwitch(accessToken, refreshToken, email, sessionToken)
+          }
+          ElMessage.success('✅ 换号成功！已推送新账号，1秒后自动生效，无需重启...')
+          
+          // 已经注入，只需确保 Cursor 在运行（不重启）
+          if (window.electronAPI?.checkCursorProcess) {
+            const status = await window.electronAPI.checkCursorProcess()
+            if (!status.running && window.electronAPI?.startCursor) {
+              // 只有未运行时才启动，不调用 reload
+              await window.electronAPI.startCursor()
+              ElMessage.info('Cursor 未运行，正在启动...')
+            }
+          }
+        }
 
         await getCurrentAccount()
-        await validateLicense() 
+        await validateLicense()
       } catch (e) {
         console.error('续杯失败:', e)
-        ElMessage.error('续杯失败: ' + e.message)
+        // 检查是否是 Cursor 路径未找到的错误
+        if (e.message && e.message.includes('Cursor executable not found')) {
+          ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+        } else {
+          ElMessage.error('续杯失败: ' + e.message)
+        }
       } finally {
         loading.operations = false
       }
@@ -508,17 +649,20 @@ export default {
     const checkForUpdates = async () => {
       try {
         const result = await versionService.checkVersion(appVersion.value)
-        if (result.success && result.data?.needsUpdate) {
-          const { latestVersion, updateInfo } = result.data
-          faqUrl.value = result.data.faqUrl || faqUrl.value
-          
-          ElMessageBox.confirm(
-            `发现新版本 v${latestVersion}，点击确定前往下载。`,
-            '版本更新',
-            { confirmButtonText: '立即下载', cancelButtonText: '稍后' }
-          ).then(() => {
-            if (updateInfo.downloadUrl) window.electronAPI.openExternal(updateInfo.downloadUrl)
-          })
+        if (result.success) {
+          encryptionEnabled.value = result.data?.encryptionEnabled === true
+          if (result.data?.needsUpdate) {
+            const { latestVersion, updateInfo } = result.data
+            faqUrl.value = result.data.faqUrl || faqUrl.value
+            
+            ElMessageBox.confirm(
+              `发现新版本 v${latestVersion}，点击确定前往下载。`,
+              '版本更新',
+              { confirmButtonText: '立即下载', cancelButtonText: '稍后' }
+            ).then(() => {
+              if (updateInfo.downloadUrl) window.electronAPI.openExternal(updateInfo.downloadUrl)
+            })
+          }
         }
       } catch (e) { console.error('检查更新失败:', e) }
     }
@@ -541,7 +685,211 @@ export default {
       ElMessage.info('已使用默认路径')
     }
 
+    const loadSeamlessMode = () => {
+      // Always start with seamless OFF — no persistence
+      seamlessEnabled.value = false
+    }
+
+    const handleSeamlessToggle = async (val) => {
+      console.log('🔍 handleSeamlessToggle:', val)
+
+      if (val) {
+        await ElMessageBox.alert(
+          '开启无感换号后会自动在账号额度用完后进行换号，无需手动续杯。' +
+          '<br><br>' +
+          '<span style="color:red;font-weight:bold;">⚠️ 首次开启会重启 Cursor 一次，之后无需重启，额度用完自动切换账号。</span>',
+          '无感换号',
+          { confirmButtonText: '知道了', type: 'info', dangerouslyUseHTMLString: true }
+        )
+
+        try {
+          // ── Step 1: Fetch a new account ──
+          if (!isLicenseValid.value) {
+            ElMessage.warning('授权码无效，请先激活')
+            return
+          }
+          if (!cursorService.cursorPaths) await cursorService.initialize()
+          const macAddress = await deviceService.getMacAddress()
+          const apiUrl = getAccountByCodeUrl(licenseCode.value, macAddress, currentAccount.email || 'no-current-account')
+
+          let accessToken, refreshToken, email, sessionToken
+          if (encryptionEnabled.value) {
+            const accountRes = await window.electronAPI.fetchAccountEncrypted(apiUrl)
+            if (!accountRes || !accountRes.success || !accountRes.accessToken) {
+              ElMessage.error('❌ 获取新账号失败')
+              return
+            }
+            accessToken = accountRes.accessToken
+            refreshToken = accountRes.refreshToken
+            email = accountRes.email
+            sessionToken = ''
+          } else {
+            const accountRes = await accountService.getAccountByCode(licenseCode.value, currentAccount.email || 'no-current-account')
+            if (!accountRes || !accountRes.success || !accountRes.data) {
+              ElMessage.error('❌ 获取新账号失败: ' + (accountRes?.error || '未知错误'))
+              return
+            }
+            const newAccount = accountRes.data
+            email = newAccount.email
+            accessToken = newAccount.accessToken || ''
+            refreshToken = newAccount.refreshToken || accessToken || ''
+            sessionToken = newAccount.sessionToken || newAccount.token || newAccount.WorkosCursorSessionToken
+          }
+
+          // ── Step 2: Write auth to SQLite ──
+          const sqlitePath = cursorService.cursorPaths?.sqlite
+          if (sqlitePath) {
+            const queries = [
+              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedEmail', email] },
+              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedSignUpType', 'Auth_0'] },
+              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/isAuthenticated', 'true'] },
+              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursor.email', email] },
+              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursor.accessToken', accessToken] },
+            ]
+            if (accessToken) {
+              queries.push({ sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/accessToken', accessToken] })
+              queries.push({ sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/refreshToken', refreshToken] })
+            }
+            if (window.electronAPI?.sqliteBatchRun) {
+              await window.electronAPI.sqliteBatchRun(sqlitePath, queries)
+            }
+          }
+
+          // ── Step 3: Write auth to storage.json ──
+          const storagePath = cursorService.cursorPaths?.storage
+          if (storagePath && window.electronAPI?.fsReadFile && window.electronAPI?.fsWriteFile) {
+            try {
+              const raw = await window.electronAPI.fsReadFile(storagePath)
+              const config = JSON.parse(raw)
+              Object.assign(config, {
+                'cursorAuth/cachedEmail': email,
+                'cursorAuth/accessToken': accessToken,
+                'cursorAuth/refreshToken': refreshToken,
+                'cursorAuth/cachedSignUpType': 'Auth_0',
+                'cursor.email': email,
+                'cursor.accessToken': accessToken,
+              })
+              await window.electronAPI.fsWriteFile(storagePath, JSON.stringify(config, null, 4))
+            } catch (e) {
+              console.warn('storage.json 写入失败（可跳过）:', e)
+            }
+          }
+
+          // ── Step 4: Start HTTP server & push tokens ──
+          if (window.electronAPI?.startHttpServer) {
+            await window.electronAPI.startHttpServer(36529)
+          }
+          if (window.electronAPI?.pushPendingSwitch) {
+            await window.electronAPI.pushPendingSwitch(accessToken, refreshToken, email, sessionToken)
+          }
+
+          // ── Step 5: Inject workbench if needed, then ensure Cursor running ──
+          const seamlessStatus = window.electronAPI?.getSeamlessStatus
+            ? await window.electronAPI.getSeamlessStatus()
+            : { injected: false }
+
+          if (!seamlessStatus.injected) {
+            // 首次开启无感换号：注入脚本 + 启动/重启 Cursor
+            if (window.electronAPI?.injectWorkbench) {
+              await window.electronAPI.injectWorkbench()
+            }
+            ElMessage.info('首次开启无感换号，正在注入脚本...')
+            
+            // 检查 Cursor 是否在运行
+            if (window.electronAPI?.checkCursorProcess) {
+              const status = await window.electronAPI.checkCursorProcess()
+              if (status.running) {
+                // Cursor 正在运行 → 重启以加载注入脚本
+                if (window.electronAPI?.reloadCursorWindow) {
+                  await window.electronAPI.reloadCursorWindow()
+                  ElMessage.info('正在重启 Cursor 以加载注入脚本...')
+                }
+              } else {
+                // Cursor 未运行 → 直接启动
+                if (window.electronAPI?.startCursor) {
+                  await window.electronAPI.startCursor()
+                  ElMessage.info('Cursor 未运行，正在启动...')
+                }
+              }
+            }
+          } else {
+            // 已经注入，只需确保 Cursor 在运行（不重启）
+            if (window.electronAPI?.checkCursorProcess) {
+              const status = await window.electronAPI.checkCursorProcess()
+              if (!status.running && window.electronAPI?.startCursor) {
+                await window.electronAPI.startCursor()
+                ElMessage.info('Cursor 未运行，正在启动...')
+              } else if (status.running) {
+                ElMessage.success('✅ 无感换号已开启，Cursor 无需重启')
+              }
+            }
+          }
+
+          await getCurrentAccount()
+        } catch (e) {
+          console.warn('无感换号初始化失败:', e)
+          // 检查是否是 Cursor 路径未找到的错误
+          if (e.message && e.message.includes('Cursor executable not found')) {
+            ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+          } else {
+            ElMessage.error('无感换号初始化失败: ' + e.message)
+          }
+        }
+      }
+    }
+
+    const ensureCursorRunning = async () => {
+      if (window.electronAPI?.checkCursorProcess) {
+        const status = await window.electronAPI.checkCursorProcess()
+        if (status.running) {
+          if (window.electronAPI?.reloadCursorWindow) {
+            await window.electronAPI.reloadCursorWindow()
+          }
+        } else {
+          if (window.electronAPI?.startCursor) {
+            await window.electronAPI.startCursor()
+          }
+        }
+      }
+    }
+
+    // 用户协议相关逻辑
+    const AGREEMENT_STORAGE_KEY = 'user_agreement_accepted'
+
+    const checkAgreementStatus = () => {
+      try {
+        const accepted = localStorage.getItem(AGREEMENT_STORAGE_KEY)
+        if (!accepted) {
+          showAgreementDialog.value = true
+        }
+      } catch (e) {
+        // localStorage 不可用时，每次都显示
+        showAgreementDialog.value = true
+      }
+    }
+
+    const handleAgreementAgree = () => {
+      try {
+        localStorage.setItem(AGREEMENT_STORAGE_KEY, Date.now().toString())
+      } catch (e) {
+        console.warn('无法保存协议同意状态:', e)
+      }
+      showAgreementDialog.value = false
+    }
+
+    const handleAgreementDisagree = () => {
+      // 不同意则关闭应用
+      if (window.electronAPI && window.electronAPI.closeWindow) {
+        window.electronAPI.closeWindow()
+      } else {
+        window.close()
+      }
+    }
+
     onMounted(async () => {
+      // 首次打开时检查用户协议
+      checkAgreementStatus()
+
       const result = await storageService.loadLicenseCode()
       if (result && result.success && result.licenseCode) {
         licenseCode.value = result.licenseCode
@@ -562,7 +910,7 @@ export default {
         }
       } catch (e) {}
 
-      // 初始化调试模式：从主进程获取 DEBUG_MODE，并监听 Ctrl+Shift+D 切换
+      // 初始化调试模式
       if (window.electronAPI) {
         try {
           debugMode.value = await window.electronAPI.getDebugMode()
@@ -573,15 +921,57 @@ export default {
           })
         }
       }
+
+      // 轮询查询额度状态（每次实际调用额度 API）
+      setInterval(async () => {
+        if (!seamlessEnabled.value) {
+          console.log('[quota] 无感换号未开启，跳过轮询检查')
+          return
+        }
+        console.log('[quota] 开始轮询检查额度...')
+        try {
+          if (window.electronAPI && window.electronAPI.getQuotaStatus) {
+            const d = await window.electronAPI.getQuotaStatus()
+            // 支持多种数据格式
+            // 格式1: { response: { parsed: { quotaFull: true } } } (debug_quota_check)
+            // 格式2: { parsed: { quotaFull: true } }
+            // 格式3: { quotaFull: true }
+            const full = d.response?.parsed?.quotaFull ?? d.parsed?.quotaFull ?? d.quotaFull ?? false
+            quotaFull.value = full
+            console.log('[quota] 检查结果:', d)
+            console.log('[quota] 解析的 full 值:', full, '类型:', typeof full)
+            // Auto-switch when seamless mode is on and quota is exhausted
+            if (full && !autoSwitchInProgress) {
+              autoSwitchInProgress = true
+              console.log('[quota] 额度已满，触发自动续杯...')
+              ElMessage.info('🔄 检测到额度已用完，自动续杯中...')
+              await renewPro()
+              autoSwitchInProgress = false
+              console.log('[quota] 自动续杯完成')
+            } else if (full && autoSwitchInProgress) {
+              console.log('[quota] 额度已满但续杯正在进行中，跳过')
+            } else {
+              console.log('[quota] 额度未满（full='+full+'），继续监控')
+            }
+          }
+        } catch (e) {
+          console.error('[quota] 轮询检查出错:', e)
+        }
+      }, 15000)
+
+      // Seamless always starts OFF — no persistence
+      seamlessEnabled.value = false
     })
 
     return {
       licenseCode, licenseData, systemNotices, debugMode, showDebugPanel, showPathDialog,
-      faqUrl, cursorExecutablePath, cursorEditorVersion, loading, currentAccount,
+      showAgreementDialog, faqUrl, cursorExecutablePath, cursorEditorVersion, loading, currentAccount, quotaFull, encryptionEnabled,
+      seamlessEnabled,
       cursorVersion, licenseStatus, isLicenseValid,
       expiryTime, expiryClass, daysRemaining, totalDays, usagePercentage, progressColor,
       todaySwitchCount, validateLicense, openPurchasePage, renewPro, openFaqUrl,
-      forceRefreshUI, selectCursorPath, clearCursorPath, getCurrentAccount
+      forceRefreshUI, selectCursorPath, clearCursorPath, getCurrentAccount,
+      handleAgreementAgree, handleAgreementDisagree, handleSeamlessToggle
     }
   }
 }
@@ -916,5 +1306,37 @@ export default {
   height: 26px;
   padding: 0 8px;
   font-size: 14px;
+}
+
+/* 无感换号开关 */
+.seamless-toggle-container {
+  margin-top: 16px;
+  padding: 12px 20px;
+  background: linear-gradient(145deg, #f0fff4 0%, #e6ffed 100%);
+  border: 1px solid #c6f6d5;
+  border-radius: 14px;
+  transition: all 0.3s ease;
+}
+.seamless-toggle-container:hover {
+  box-shadow: 0 4px 12px rgba(72, 187, 120, 0.12);
+}
+.seamless-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.seamless-toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.seamless-toggle-label .label-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #276749;
+}
+.seamless-toggle-label .label-desc {
+  font-size: 12px;
+  color: #68d391;
 }
 </style>

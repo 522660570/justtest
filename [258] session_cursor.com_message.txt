@@ -1,0 +1,52 @@
+POST /api/auth/sessions/revoke h2
+host: cursor.com
+content-length: 90
+pragma: no-cache
+cache-control: no-cache
+sec-ch-ua-platform: "Windows"
+sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-bitness: "64"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-arch: "x86"
+user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+content-type: application/json
+sec-ch-ua-platform-version: "19.0.0"
+accept: */*
+origin: https://cursor.com
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: https://cursor.com/cn/dashboard/settings
+accept-encoding: gzip, deflate, br, zstd
+accept-language: zh-CN,zh;q=0.9
+cookie: workos_id=user_01KKQ0M035WY7EH0Y3Z8M5W8YM
+cookie: WorkosCursorSessionToken=user_01KKQ0M035WY7EH0Y3Z8M5W8YM%3A%3AeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhdXRoMHx1c2VyXzAxS0tRME0wMzVXWTdFSDBZM1o4TTVXOFlNIiwidGltZSI6IjE3ODA0MTU3NTEiLCJyYW5kb21uZXNzIjoiOTI3MjEyZjQtMjMzMy00MGU0IiwiZXhwIjoxNzg1NTk5NzUxLCJpc3MiOiJodHRwczovL2F1dGhlbnRpY2F0aW9uLmN1cnNvci5zaCIsInNjb3BlIjoib3BlbmlkIHByb2ZpbGUgZW1haWwgb2ZmbGluZV9hY2Nlc3MiLCJhdWQiOiJodHRwczovL2N1cnNvci5jb20iLCJ0eXBlIjoid2ViIiwid29ya29zU2Vzc2lvbklkIjoic2Vzc2lvbl8wMUtUNEdSU0RHQ01aU1pXR0FBWkZBMDE2QSJ9.AWv397DyyVWKTrCAuhi68RO6jaOTeHE2fPcc6Ntob4I
+cookie: cursor-web-target-synced-user=user_01KKQ0M035WY7EH0Y3Z8M5W8YM
+cookie: generaltranslation.locale-routing-enabled=true
+cookie: generaltranslation.referrer-locale=cn
+cookie: __stripe_mid=90b886a1-6fab-452f-9559-11da7441395b8df349
+cookie: __stripe_sid=9cd88e92-0bc0-454b-aed4-4432b7b65525c5ea0f
+priority: u=1, i
+
+{"session_id":"e57552ae851c2cb891b35e910519658d89256ddc463eb7e40c1f1c4b64ac01c7","type":2}
+
+h2 200
+accept-ch: Sec-CH-UA-Arch, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Bitness
+cache-control: public, max-age=0, must-revalidate
+content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.live https://vercel.live https://*.vercel-scripts.com https://*.posthog.com https://*.unifyintent.com https://*.cloudfront.net https://pro.ip-api.com https://*.liadm.com https://*.usbrowserspeed.com https://alocdn.com https://featureassets.org https://prodregistryv2.org https://js.stripe.com https://www.googletagmanager.com https://*.googletagmanager.com; style-src 'self' 'unsafe-inline' https://vercel.com; img-src 'self' data: blob: https://vercel.com https://avatars.githubusercontent.com https://raw.githubusercontent.com https://private-user-images.githubusercontent.com https://user-images.githubusercontent.com https://camo.githubusercontent.com https://github.com https://cursor.com https://cursor-cdn.com https://workoscdn.com https://*.public.blob.vercel-storage.com https://*.ytimg.com https://www.googletagmanager.com https://*.google-analytics.com https://*.basehub.earth https://*.basehub.com https://*.workoscdn.com https://*.vercel.live https://vercel.com https://*.vercel-scripts.com https://*.pusher.com wss://*.pusher.com https://*.posthog.com https://*.cursor.sh https://*.cursor.com https://*.unifyintent.com https://cloud-agent-artifacts.s3.us-east-1.amazonaws.com https://*.r2.cloudflarestorage.com; font-src 'self' data: https://vercel.live; connect-src 'self' https://*.basehub.earth https://*.basehub.com https://*.workoscdn.com https://*.vercel.live https://vercel.com https://*.vercel-scripts.com https://*.pusher.com wss://*.pusher.com https://*.posthog.com https://*.cursor.sh https://*.cursor.com https://*.unifyintent.com https://cloud-agent-artifacts.s3.us-east-1.amazonaws.com https://*.r2.cloudflarestorage.com https://vercel.live https://*.pusher.com wss://*.pusher.com http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:* https://*.posthog.com https://unifyintent.com https://browser-intake-us5-datadoghq.com https://*.cloudfront.net https://pro.ip-api.com https://*.liadm.com https://*.usbrowserspeed.com https://alocdn.com https://9xgnrndqve.execute-api.us-west-2.amazonaws.com https://featureassets.org https://prodregistryv2.org wss://*.agent.cvm.dev wss://*.dev.cursorvm.com wss://*.us1.cursorvm.com wss://*.us1p.cursorvm.com wss://*.us3.cursorvm.com wss://*.us3p.cursorvm.com wss://*.us4.cursorvm.com wss://*.us4p.cursorvm.com wss://*.us5.cursorvm.com wss://*.us5p.cursorvm.com wss://*.us6.cursorvm.com wss://*.us6p.cursorvm.com wss://*.us7.cursorvm.com wss://*.us7p.cursorvm.com wss://*.lclhst.build:* https://raw.githubusercontent.com https://cursor-cdn.com https://*.public.blob.vercel-storage.com https://api.stripe.com https://q.stripe.com https://www.googletagmanager.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com; media-src 'self' https://*.basehub.earth https://*.basehub.com https://*.workoscdn.com https://*.vercel.live https://vercel.com https://*.vercel-scripts.com https://*.pusher.com wss://*.pusher.com https://*.posthog.com https://*.cursor.sh https://*.cursor.com https://*.unifyintent.com https://cloud-agent-artifacts.s3.us-east-1.amazonaws.com https://*.r2.cloudflarestorage.com; frame-src 'self' https://vercel.live https://www.youtube.com https://*.agent.cvm.dev https://*.lclhst.build:* https://js.stripe.com https://hooks.stripe.com https://www.googletagmanager.com; worker-src 'self' blob: https://m.stripe.network
+content-type: application/json; charset=utf-8
+date: Tue, 02 Jun 2026 16:10:07 GMT
+etag: "17a6zzdutk1g"
+referrer-policy: strict-origin-when-cross-origin
+server: Vercel
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+x-matched-path: /api/auth/sessions/revoke
+x-permitted-cross-domain-policies: none
+x-vercel-cache: MISS
+x-vercel-id: sin1::iad1::xz867-1780416606725-a7d9b11e8fd1
+x-xss-protection: 1; mode=block
+content-length: 16
+
+{"success":true}

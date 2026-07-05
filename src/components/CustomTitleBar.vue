@@ -1,5 +1,5 @@
 <template>
-  <div class="custom-title-bar" @mousedown="handleMouseDown">
+  <div class="custom-title-bar" data-tauri-drag-region>
     <div class="title-bar-content">
       <div class="app-title">
         <img src="/icon.ico" alt="Cursor Manager" class="app-icon">
@@ -9,15 +9,6 @@
         <button class="control-btn minimize-btn" @click="minimizeWindow" title="最小化">
           <svg width="10" height="10" viewBox="0 0 10 10">
             <rect x="0" y="4" width="10" height="2" fill="currentColor"/>
-          </svg>
-        </button>
-        <button class="control-btn maximize-btn" @click="toggleMaximize" :title="isMaximized ? '还原' : '最大化'">
-          <svg v-if="!isMaximized" width="10" height="10" viewBox="0 0 10 10">
-            <rect x="0" y="0" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/>
-          </svg>
-          <svg v-else width="10" height="10" viewBox="0 0 10 10">
-            <rect x="0" y="0" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/>
-            <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/>
           </svg>
         </button>
         <button class="control-btn close-btn" @click="closeWindow" title="关闭">
@@ -31,49 +22,16 @@
 </template>
 
 <script>
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
 export default {
   name: 'CustomTitleBar',
-  data() {
-    return {
-      isMaximized: false
-    }
-  },
-  mounted() {
-    this.updateWindowState()
-    // 监听窗口状态变化
-    window.addEventListener('resize', this.updateWindowState)
-  },
-  beforeUnmount() {
-    window.removeEventListener('resize', this.updateWindowState)
-  },
   methods: {
-    handleMouseDown(event) {
-      // 拖拽功能由CSS的-webkit-app-region: drag处理
-      // 这里不需要额外处理
+    minimizeWindow() {
+      getCurrentWindow().minimize()
     },
-    async minimizeWindow() {
-      if (window.electronAPI && window.electronAPI.minimizeWindow) {
-        await window.electronAPI.minimizeWindow()
-      }
-    },
-    async toggleMaximize() {
-      if (window.electronAPI && window.electronAPI.maximizeWindow) {
-        await window.electronAPI.maximizeWindow()
-        this.updateWindowState()
-      }
-    },
-    async closeWindow() {
-      if (window.electronAPI && window.electronAPI.closeWindow) {
-        await window.electronAPI.closeWindow()
-      }
-    },
-    async updateWindowState() {
-      if (window.electronAPI && window.electronAPI.getWindowState) {
-        const state = await window.electronAPI.getWindowState()
-        if (state) {
-          this.isMaximized = state.isMaximized
-        }
-      }
+    closeWindow() {
+      getCurrentWindow().close()
     }
   }
 }
