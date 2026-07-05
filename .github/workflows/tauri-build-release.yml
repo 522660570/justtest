@@ -5,324 +5,199 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: '版本号 (例如: 1.9.1)'
-        required: false
 
 permissions:
   contents: write
 
 jobs:
-  # Windows 构建
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 设置 Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: 设置 Rust
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 安装依赖
-        run: npm ci --omit=optional
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          npm install
 
-      - name: 构建 Tauri 应用 (Windows)
+      - name: Build Tauri
         run: npm run tauri build
 
-      - name: 构建便携版
+      - name: Create portable
         shell: pwsh
         run: |
-          # 找到可执行文件（确保是优化后的release版本）
           $exePath = "src-tauri\target\release\app.exe"
-          
           if (Test-Path $exePath) {
-              # 检查文件大小
-              $fileSize = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
-              Write-Host "原始文件大小: $fileSize MB"
-              
-              # 如果文件大于50MB，说明可能包含调试信息
-              if ($fileSize -gt 50) {
-                  Write-Host "警告: 文件大小异常 ($fileSize MB)，可能包含调试符号"
-                  Write-Host "请检查 Cargo.toml 的 [profile.release] 配置"
-              }
-              
-              # 创建便携版目录并复制
-              $portableDir = "dist-portable"
-              New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
-              Copy-Item $exePath "$portableDir\Cursor续杯_便携版.exe"
-              
-              $finalSize = [math]::Round((Get-Item "$portableDir\Cursor续杯_便携版.exe").Length / 1MB, 2)
-              Write-Host "便携版文件大小: $finalSize MB"
-              
-              if ($finalSize -gt 50) {
-                  Write-Host "错误: 便携版文件过大 ($finalSize MB)！" -ForegroundColor Red
-                  exit 1
-              }
-          } else {
-              Write-Host "错误: 找不到可执行文件" -ForegroundColor Red
-              exit 1
+              $size = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
+              Write-Host "File size: $size MB"
+              New-Item -ItemType Directory -Force -Path "dist-portable" | Out-Null
+              Copy-Item $exePath "dist-portable\Cursor续杯_portable.exe"
           }
 
-      - name: 上传 Windows 安装包
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
           path: |
+            dist-portable/*.exe
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
-            dist-portable/*
-          retention-days: 7
 
-  # macOS 构建 (支持 Intel 和 Apple Silicon)
   build-macos:
     runs-on: macos-latest
     strategy:
       matrix:
         target: [x86_64-apple-darwin, aarch64-apple-darwin]
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 设置 Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: 设置 Rust
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: 安装依赖
-        run: npm ci --omit=optional
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          npm install
 
-      - name: 构建 Tauri 应用 (macOS ${{ matrix.target }})
+      - name: Build Tauri
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      - name: 重命名 DMG 文件
-        run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
-          for file in *.dmg; do
-            if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
-              mv "$file" "${file%.dmg}_x64.dmg"
-            else
-              mv "$file" "${file%.dmg}_arm64.dmg"
-            fi
-          done
-
-      - name: 上传 macOS 安装包
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.target }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-          retention-days: 7
 
-  # Linux 构建
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 设置 Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: 设置 Rust
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 安装系统依赖
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libssl-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
-      - name: 安装依赖
-        run: npm ci --omit=optional
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          npm install
 
-      - name: 构建 Tauri 应用 (Linux)
+      - name: Build Tauri
         run: npm run tauri build
 
-      - name: 上传 Linux 安装包
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
           path: |
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/deb/*.deb
-          retention-days: 7
 
-  # 创建 Release
   create-release:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 下载所有构建产物
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: 显示文件结构
-        run: ls -R artifacts
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: 获取版本号
-        id: get_version
+      - name: Prepare files
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
-            echo "version=v${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=v1.9.1" >> $GITHUB_OUTPUT
+          mkdir -p release
+          
+          # Windows portable
+          if [ -f artifacts/windows-x64/Cursor续杯_portable.exe ]; then
+            cp artifacts/windows-x64/Cursor续杯_portable.exe "release/Cursor续杯_${{ steps.version.outputs.version }}_windows_portable.exe"
           fi
+          
+          # Windows NSIS
+          for f in artifacts/windows-x64/*.exe; do
+            if [[ "$f" != *"portable"* ]]; then
+              cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_windows_setup.exe" 2>/dev/null || true
+              break
+            fi
+          done
+          
+          # Windows MSI
+          for f in artifacts/windows-x64/*.msi; do
+            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_windows.msi" 2>/dev/null || true
+            break
+          done
+          
+          # macOS
+          for f in artifacts/macos-x86_64-apple-darwin/*.dmg; do
+            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_macos_x64.dmg" 2>/dev/null || true
+            break
+          done
+          
+          for f in artifacts/macos-aarch64-apple-darwin/*.dmg; do
+            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_macos_arm64.dmg" 2>/dev/null || true
+            break
+          done
+          
+          # Linux
+          for f in artifacts/linux-x64/*.AppImage; do
+            cp "$f" "release/Cursor续杯_${{ steps.version.outputs.version }}_linux.AppImage" 2>/dev/null || true
+            break
+          done
+          
+          ls -lh release/
 
-      - name: 重命名文件为友好名称
-        run: |
-          mkdir -p release-files
-          
-          # Windows 便携版（推荐，双击即用，无需安装）
-          if [ -f artifacts/windows-x64/Cursor续杯_便携版.exe ]; then
-            cp "artifacts/windows-x64/Cursor续杯_便携版.exe" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_windows_x64_portable.exe"
-          fi
-          
-          # Windows NSIS 安装包
-          if ls artifacts/windows-x64/*.exe 1> /dev/null 2>&1; then
-            for file in artifacts/windows-x64/*.exe; do
-              # 跳过便携版
-              if [[ "$file" != *"便携版"* ]]; then
-                cp "$file" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_windows_x64_setup.exe"
-                break
-              fi
-            done
-          fi
-          
-          # Windows MSI 安装包（备选）
-          if ls artifacts/windows-x64/*zh-CN.msi 1> /dev/null 2>&1; then
-            for file in artifacts/windows-x64/*zh-CN.msi; do
-              cp "$file" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_windows_x64.msi"
-              break
-            done
-          fi
-          
-          # macOS Intel
-          if ls artifacts/macos-x86_64-apple-darwin/*.dmg 1> /dev/null 2>&1; then
-            for file in artifacts/macos-x86_64-apple-darwin/*.dmg; do
-              cp "$file" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_macOS_x64.dmg"
-              break
-            done
-          fi
-          
-          # macOS Apple Silicon
-          if ls artifacts/macos-aarch64-apple-darwin/*.dmg 1> /dev/null 2>&1; then
-            for file in artifacts/macos-aarch64-apple-darwin/*.dmg; do
-              cp "$file" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_macOS_arm64.dmg"
-              break
-            done
-          fi
-          
-          # Linux AppImage
-          if ls artifacts/linux-x64/*.AppImage 1> /dev/null 2>&1; then
-            for file in artifacts/linux-x64/*.AppImage; do
-              cp "$file" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_linux_x64.AppImage"
-              break
-            done
-          fi
-          
-          # Linux DEB（备选）
-          if ls artifacts/linux-x64/*.deb 1> /dev/null 2>&1; then
-            for file in artifacts/linux-x64/*.deb; do
-              cp "$file" "release-files/Cursor续杯_${{ steps.get_version.outputs.version }}_linux_x64.deb"
-              break
-            done
-          fi
-          
-          echo "📦 打包的文件列表："
-          ls -lh release-files/
-
-      - name: 创建 Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_version.outputs.version }}
-          name: Cursor续杯 ${{ steps.get_version.outputs.version }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+          files: release/*
           body: |
-            ## 🎉 Cursor续杯 ${{ steps.get_version.outputs.version }}
+            ## Cursor续杯 ${{ steps.version.outputs.version }}
             
-            ### 📦 下载说明
+            ### Windows (推荐便携版)
+            - `xxx_portable.exe` - 便携版 (~20MB) - 双击即用，无需安装 ⭐
+            - `xxx_setup.exe` - 安装版 (~5MB)
+            - `xxx.msi` - MSI 安装包 (~8MB)
             
-            **Windows 用户**（推荐下载便携版）：
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_windows_x64_portable.exe` - **便携版（推荐 ⭐）双击即用，无需安装，~20MB**
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_windows_x64_setup.exe` - NSIS 安装包（~5MB，需要安装）
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_windows_x64.msi` - MSI 安装包（~8.6MB，企业用户）
+            ### macOS
+            - `xxx_macos_x64.dmg` - Intel Mac
+            - `xxx_macos_arm64.dmg` - Apple Silicon (M1/M2/M3)
             
-            **macOS 用户**：
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_macOS_x64.dmg` - Intel 芯片 Mac
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_macOS_arm64.dmg` - Apple Silicon (M1/M2/M3/M4)
+            ### Linux
+            - `xxx_linux.AppImage` - AppImage
             
-            **Linux 用户**：
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_linux_x64.AppImage` - AppImage 格式（推荐）
-            - `Cursor续杯_${{ steps.get_version.outputs.version }}_linux_x64.deb` - DEB 安装包（备选）
+            ### 使用方法
             
-            ### ✨ 主要功能
+            **便携版**: 双击运行，首次需要安装 [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703)
             
-            - ✅ 无感换号：额度用完自动续杯，无需重启 Cursor
-            - ✅ 一键续杯：手动切换账号，支持热切换
-            - ✅ 机器码重置：每次换号自动重置机器码
-            - ✅ 额度监控：实时监控 API 使用情况
-            
-            ### 🔧 使用方法
-            
-            **便携版（推荐）**：
-            1. 下载 `xxx_portable.exe`
-            2. 双击运行，无需安装
-            3. 首次运行需要安装 [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703)（程序会自动提示）
-            
-            **安装版**：
-            1. 下载 `xxx_setup.exe` 或 `xxx.msi`
-            2. 运行安装程序
-            3. 按提示完成安装
-            
-            ### ⚠️ 注意事项
-            
-            - **Windows**：
-              - 便携版：双击即用，首次需要安装 [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703) 运行时
-              - 安装版：安装过程会自动下载 WebView2
-            - **macOS**：首次打开可能需要在"系统偏好设置 > 安全性与隐私"中允许运行
-            - **Linux**：AppImage 需要先 `chmod +x` 再运行
-            - 如需技术支持，请联系 QQ: 522660570
-            
-            ### 📊 包体积对比
-            
-            - Windows 便携版: ~20 MB ✅ 推荐（双击即用）
-            - Windows NSIS: ~5 MB（需要安装）
-            - Windows MSI: ~8.6 MB（需要安装）
-            - macOS DMG: ~10 MB
-            - Linux AppImage: ~12 MB
-          files: |
-            release-files/*
+            **安装版**: 运行安装程序
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
