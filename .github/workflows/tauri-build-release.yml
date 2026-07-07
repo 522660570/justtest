@@ -30,12 +30,16 @@ jobs:
       - name: Create portable
         shell: pwsh
         run: |
-          $exe = "src-tauri\target\release\app.exe"
-          if (Test-Path $exe) {
-              $mb = [math]::Round((Get-Item $exe).Length / 1MB, 2)
-              Write-Host "Size: $mb MB"
+          # 寻找生成的 exe（可能是 app.exe 或 cursor-manager.exe）
+          $exe = Get-ChildItem -Path "src-tauri\target\release\*.exe" | Where-Object { $_.Name -match "^app\.exe$" -or $_.Name -match "^cursor-manager\.exe$" } | Select-Object -First 1
+          if ($exe) {
+              $mb = [math]::Round($exe.Length / 1MB, 2)
+              Write-Host "Found portable executable: $($exe.Name), Size: $mb MB"
               New-Item -Force -Type Directory "dist-portable" | Out-Null
-              Copy-Item $exe "dist-portable\Cursor续杯_portable.exe"
+              Copy-Item $exe.FullName "dist-portable\Cursor续杯_portable.exe"
+          } else {
+              Write-Host "::error::Could not find executable for portable version"
+              exit 1
           }
 
       - uses: actions/upload-artifact@v4
@@ -103,7 +107,7 @@ jobs:
           mkdir release
           
           # Windows portable
-          cp artifacts/windows/Cursor续杯_portable.exe "release/Cursor续杯_${{ steps.ver.outputs.version }}_portable.exe" 2>/dev/null || true
+          find artifacts/windows -name "Cursor续杯_portable.exe" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}_portable.exe" \; -quit 2>/dev/null || true
           
           # Windows NSIS
           find artifacts/windows -name "*.exe" ! -name "*portable*" -exec cp {} "release/Cursor续杯_${{ steps.ver.outputs.version }}_setup.exe" \; -quit 2>/dev/null || true
