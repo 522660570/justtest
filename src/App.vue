@@ -596,10 +596,16 @@ export default {
       } catch (e) {
         console.error('续杯失败:', e)
         // 检查是否是 Cursor 路径未找到的错误
-        if (e.message && e.message.includes('Cursor executable not found')) {
+        if (e && e.message && (e.message.includes('Cursor executable not found') || e.message.includes('workbench.desktop.main.js not found') || e.message.includes('No cursor executable found'))) {
           ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+          // 如果是因为未找到路径导致的续杯失败，由于并没有真正续杯，最好把开关置回 false
+          seamlessEnabled.value = false
+        } else if (typeof e === 'string' && (e.includes('Cursor executable not found') || e.includes('workbench.desktop.main.js not found') || e.includes('No cursor executable found'))) {
+          ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+          seamlessEnabled.value = false
         } else {
-          ElMessage.error('续杯失败: ' + e.message)
+          const errMsg = typeof e === 'string' ? e : (e.message || String(e))
+          ElMessage.error('续杯失败: ' + errMsg)
         }
       } finally {
         loading.operations = false
@@ -841,10 +847,12 @@ export default {
           const errorMsg = typeof e === 'string' ? e : (e.message || String(e))
           
           // 检查是否是 Cursor 路径未找到的错误
-          if (errorMsg.includes('Cursor executable not found') || errorMsg.includes('workbench.desktop.main.js not found')) {
+          if (errorMsg.includes('Cursor executable not found') || errorMsg.includes('workbench.desktop.main.js not found') || errorMsg.includes('No cursor executable found')) {
             ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+            seamlessEnabled.value = false
           } else {
             ElMessage.error('无感换号初始化失败: ' + errorMsg)
+            seamlessEnabled.value = false
           }
         }
       }

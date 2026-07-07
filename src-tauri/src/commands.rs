@@ -575,19 +575,103 @@ pub fn clear_log_file() -> Result<(), String> {
 pub fn get_cursor_version() -> Result<String, String> {
     if let Ok(exe) = process::find_cursor_executable() {
         let exe_path = std::path::Path::new(&exe);
-        let pkg_path = exe_path.parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.join("resources").join("app").join("package.json"));
-        if let Some(pkg) = pkg_path {
-            if pkg.exists() {
-                if let Ok(content) = std::fs::read_to_string(&pkg) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(ver) = json["version"].as_str() {
-                            return Ok(ver.to_string());
+        
+        let mut ver_found = None;
+
+        // 方案 1: `../../resources/app/package.json`
+        if ver_found.is_none() {
+             let pkg_path = exe_path.parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.join("resources").join("app").join("package.json"));
+             if let Some(pkg) = pkg_path {
+                 if pkg.exists() {
+                     if let Ok(content) = std::fs::read_to_string(&pkg) {
+                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                             if let Some(ver) = json["version"].as_str() {
+                                 ver_found = Some(ver.to_string());
+                             }
+                         }
+                     }
+                 }
+             }
+        }
+        
+        // 方案 2: `../resources/app/package.json`
+        if ver_found.is_none() {
+            let pkg_path_alt = exe_path.parent()
+                .map(|p| p.join("resources").join("app").join("package.json"));
+            if let Some(pkg) = pkg_path_alt {
+                if pkg.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&pkg) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(ver) = json["version"].as_str() {
+                                ver_found = Some(ver.to_string());
+                            }
                         }
                     }
                 }
             }
+        }
+        
+        // 方案 3: `../resources/app/product.json` (新版本Cursor通常把版本写在这里)
+        if ver_found.is_none() {
+             let prod_path = exe_path.parent()
+                .map(|p| p.join("resources").join("app").join("product.json"));
+             if let Some(prod) = prod_path {
+                 if prod.exists() {
+                     if let Ok(content) = std::fs::read_to_string(&prod) {
+                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                             if let Some(ver) = json["version"].as_str() {
+                                 ver_found = Some(ver.to_string());
+                             }
+                         }
+                     }
+                 }
+             }
+        }
+
+        // 方案 4: 直接读取同级的 `resources/app/package.json` 或 `resources/app/product.json` 
+        // 应对用户自定义选择快捷方式导致的异常目录层级
+        if ver_found.is_none() {
+            if let Some(parent) = exe_path.parent() {
+                // 有时候因为选择的是 lnk，解析后如果是直接进入了应用根目录。
+                // 递归往上一两级尝试搜索 resources/app/product.json
+                let mut current_dir = parent;
+                for _ in 0..3 {
+                    let p_prod = current_dir.join("resources").join("app").join("product.json");
+                    let p_pkg = current_dir.join("resources").join("app").join("package.json");
+                    
+                    if p_prod.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&p_prod) {
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(ver) = json["version"].as_str() {
+                                    ver_found = Some(ver.to_string());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if p_pkg.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&p_pkg) {
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(ver) = json["version"].as_str() {
+                                    ver_found = Some(ver.to_string());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(p) = current_dir.parent() {
+                        current_dir = p;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(v) = ver_found {
+            return Ok(v);
         }
     }
     Err("Could not determine Cursor version".into())
