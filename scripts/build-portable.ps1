@@ -1,11 +1,14 @@
-# Tauri 便携版打包脚本
+﻿# Tauri 便携版打包脚本
 # 用途：创建一个双击就能运行的便携版，不需要安装
+
+# 刷新环境变量，确保 Rust/cargo 可用
+$env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
 
 Write-Host "🚀 开始构建 Tauri 便携版..." -ForegroundColor Green
 
 # 1. 构建 Tauri 应用
 Write-Host "`n📦 正在构建 Tauri 应用..." -ForegroundColor Cyan
-npm run tauri build
+npx --yes tauri build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ 构建失败！" -ForegroundColor Red
     exit 1

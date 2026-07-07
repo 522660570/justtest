@@ -674,15 +674,24 @@ export default {
         const result = await window.electronAPI.openFileDialog({ title: '选择 Cursor.exe' })
         if (result.success) {
           cursorExecutablePath.value = result.filePath
+          await storageService.saveCursorPath(result.filePath)
+          if (cursorService) {
+            cursorService.userCursorExecutablePath = result.filePath
+            if (cursorService.cursorPaths) cursorService.cursorPaths.executable = result.filePath
+          }
           ElMessage.success('路径设置成功')
           showPathDialog.value = false
         }
       } finally { loading.pathSelection = false }
     }
 
-    const clearCursorPath = () => {
+    const clearCursorPath = async () => {
       cursorExecutablePath.value = ''
-      ElMessage.info('已使用默认路径')
+      await storageService.saveCursorPath('')
+      if (cursorService) {
+        cursorService.userCursorExecutablePath = null
+      }
+      ElMessage.info('已清除自定义路径，将使用默认路径')
     }
 
     const loadSeamlessMode = () => {
@@ -828,11 +837,14 @@ export default {
           await getCurrentAccount()
         } catch (e) {
           console.warn('无感换号初始化失败:', e)
+          // 修复：Tauri 返回的错误可能是字符串，也可能是包含 message 的 Error 对象
+          const errorMsg = typeof e === 'string' ? e : (e.message || String(e))
+          
           // 检查是否是 Cursor 路径未找到的错误
-          if (e.message && e.message.includes('Cursor executable not found')) {
+          if (errorMsg.includes('Cursor executable not found') || errorMsg.includes('workbench.desktop.main.js not found')) {
             ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
           } else {
-            ElMessage.error('无感换号初始化失败: ' + e.message)
+            ElMessage.error('无感换号初始化失败: ' + errorMsg)
           }
         }
       }

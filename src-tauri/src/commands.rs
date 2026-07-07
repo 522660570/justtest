@@ -278,10 +278,18 @@ pub fn kill_cursor_process() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn start_cursor() -> Result<serde_json::Value, String> {
     let exe_path = process::find_cursor_executable()?;
+    let exe_path_clone = exe_path.clone();
     std::thread::spawn(move || {
-        ProcessCommand::new(&exe_path).spawn().ok();
+        let mut cmd = ProcessCommand::new(&exe_path_clone);
+        // 设置工作目录为 Cursor 可执行文件所在目录，避免路径相关问题
+        if let Some(parent) = std::path::Path::new(&exe_path_clone).parent() {
+            cmd.current_dir(parent);
+        }
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.spawn().ok();
     });
-    Ok(serde_json::json!({ "success": true, "message": "Launch command sent" }))
+    Ok(serde_json::json!({ "success": true, "message": "Launch command sent", "path": exe_path }))
 }
 
 #[tauri::command]

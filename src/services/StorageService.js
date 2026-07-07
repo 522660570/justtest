@@ -64,6 +64,25 @@ class StorageService {
   }
 
   /**
+   * 专门保存 Cursor 路径配置（兼容各种拼写）
+   */
+  async saveCursorPath(path) {
+    try {
+      const config = await this.getConfig()
+      config.cursorExecutablePath = path
+      config.cursor_path = path // 兼容其他可能读取该字段的模块
+      const result = await this.saveConfig(config)
+      if (result.success) {
+        console.log('💾 Cursor路径已缓存:', path)
+      }
+      return result
+    } catch (error) {
+      console.error('❌ 保存Cursor路径失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
    * 保存授权码到本地
    */
   async saveLicenseCode(licenseCode) {

@@ -67,7 +67,88 @@ pub fn kill_cursor() -> Result<String, String> {
     Ok("Kill command sent".into())
 }
 
-pub fn find_cursor_executable() -> Result<String, String> {
+/// 从配置文件中读取用户自定义的 Cursor 可执行文件路径
+/// 配置文件位于 ~/.cursor-renewal-tool/config.json，字段为 cursorExecutablePath
+pub fn read_custom_cursor_path() -> Option<String> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()?;
+    let config_path = std::path::Path::new(&home)
+        .join(".cursor-renewal-tool")
+        .join("config.json");
+    if !config_path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let custom_path = json.get("cursorExecutablePath")?.as_str()?.to_string();
+    if custom_path.is_empty() {
+        return None;
+    }
+    Some(custom_path)
+}
+
+/// 查找 Cursor 可执行文件路径
+/// 优先使用 custom_path 参数（如果提供），否则从配置文件读取自定义路径，
+/// 最后再按默认路径搜索。支持 Windows / macOS / Linux 全平台。
+pub fn find_cursor_executable_with_custom(custom_path: Option<&str>) -> Result<String, String> {
+    // 1. 优先使用传入的自定义路径
+    if let Some(path) = custom_path {
+        if !path.is_empty() && std::path::Path::new(path).exists() {
+            return Ok(path.to_string());
+        }
+    }
+
+    // 2. 从配置文件读取自定义路径
+    if let Some(config_path) = read_custom_cursor_path() {
+        if std::path::Path::new(&config_path).exists() {
+            return Ok(config_path);
+        }
+        // 自定义路径可能是目录，尝试向下查找可执行文件
+        let p = std::path::Path::new(&config_path);
+        if cfg!(target_os = "windows") {
+            // 可能传入的是 resources/app 目录或安装根目录
+            let candidates = [
+                p.join("Cursor.exe"),
+                p.parent().unwrap_or(p).join("Cursor.exe"),
+            ];
+            for c in &candidates {
+                if c.exists() {
+                    return Ok(c.to_string_lossy().to_string());
+                }
+            }
+            // resources/app -> resources -> Cursor 根目录
+            if let Some(resources) = p.parent() {
+                if let Some(root) = resources.parent() {
+                    let exe = root.join("Cursor.exe");
+                    if exe.exists() {
+                        return Ok(exe.to_string_lossy().to_string());
+                    }
+                }
+            }
+        } else if cfg!(target_os = "macos") {
+            // 可能是 .app 内部路径，向上查找 Cursor.app
+            let mut dir = p;
+            while let Some(parent) = dir.parent() {
+                if dir.extension().map(|e| e == "app").unwrap_or(false) {
+                    let macos_exe = dir.join("Contents").join("MacOS").join("Cursor");
+                    if macos_exe.exists() {
+                        return Ok(macos_exe.to_string_lossy().to_string());
+                    }
+                }
+                dir = parent;
+            }
+        } else {
+            // Linux: 尝试在目录中查找 cursor 可执行文件
+            let exe = p.join("cursor");
+            if exe.exists() {
+                return Ok(exe.to_string_lossy().to_string());
+            }
+        }
+        // 配置的路径无效，继续 fallback 到默认搜索
+    }
+
+    // 3. 默认路径搜索（原有逻辑）
     if cfg!(target_os = "windows") {
         let paths = [
             format!("{}\\AppData\\Local\\Programs\\Cursor\\Cursor.exe", std::env::var("USERPROFILE").unwrap_or_default()),
@@ -96,8 +177,24 @@ pub fn find_cursor_executable() -> Result<String, String> {
             Err("Cursor not found at /Applications".into())
         }
     } else {
-        Err("Unsupported platform".into())
+        // Linux
+        let paths = [
+            "/usr/bin/cursor",
+            "/usr/local/bin/cursor",
+            "/opt/cursor/cursor",
+        ];
+        for p in &paths {
+            if std::path::Path::new(p).exists() {
+                return Ok(p.to_string());
+            }
+        }
+        Err("Cursor executable not found".into())
     }
+}
+
+/// 兼容旧调用：无参版本，自动从配置文件读取自定义路径
+pub fn find_cursor_executable() -> Result<String, String> {
+    find_cursor_executable_with_custom(None)
 }
 
 pub fn find_cursor_db() -> Result<Vec<String>, String> {

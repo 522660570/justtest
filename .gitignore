@@ -6,7 +6,7 @@ yarn-error.log*
 
 # Production builds
 dist/
-dist-electron/
+dist-portable/
 
 # Environment variables
 .env
@@ -64,14 +64,9 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
-
-# Electron
-out/
-dist_electron/
-
 # Temporary files
 *.tmp
 *.temp
 
+# Rust build artifacts
+src-tauri/target/
