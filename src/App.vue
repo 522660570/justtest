@@ -935,6 +935,22 @@ export default {
         try {
           debugMode.value = await window.electronAPI.getDebugMode()
         } catch (e) {}
+
+        // --- 核心修复：根据 debugMode 拦截 F12, Ctrl+Shift+I 和右键菜单 ---
+        if (!debugMode.value) {
+            // 屏蔽右键菜单，防止通过“检查”打开
+            document.addEventListener('contextmenu', e => e.preventDefault());
+            // 屏蔽键盘快捷键，前端层阻挡
+            window.addEventListener('keydown', (e) => {
+                const isF12 = e.key === 'F12' || e.keyCode === 123;
+                const isCtrlShiftI = e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.keyCode === 73);
+                if (isF12 || isCtrlShiftI) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, true);
+        }
+
         if (window.electronAPI.onToggleDebugPanel) {
           window.electronAPI.onToggleDebugPanel(() => {
             showDebugPanel.value = !showDebugPanel.value
