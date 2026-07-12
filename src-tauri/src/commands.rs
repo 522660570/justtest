@@ -125,7 +125,12 @@ pub fn get_app_environment() -> serde_json::Value {
 
 #[tauri::command]
 pub fn get_debug_mode() -> bool {
-    false
+    // 从 package.json 读取 debugMode 字段
+    let pkg = include_str!("../../package.json");
+    serde_json::from_str::<serde_json::Value>(pkg)
+        .ok()
+        .and_then(|v| v.get("debugMode").and_then(|v| v.as_bool()))
+        .unwrap_or(false)
 }
 
 // ── Config File ──
