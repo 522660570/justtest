@@ -3,7 +3,7 @@
   "version": "1.9.3",
   "description": "Cursor AI账号管理工具",
   "author": "Li <522660570@qq.com>",
-  "debugMode": true,
+  "debugMode": false,
   "scripts": {
     "dev": "tauri dev",
     "build": "powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1",

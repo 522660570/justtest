@@ -42,6 +42,9 @@
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
       }
+    },
+    "macOS": {
+      "infoPlist": "Info.plist"
     }
   }
 }

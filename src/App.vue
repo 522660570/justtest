@@ -457,8 +457,26 @@ export default {
 
     const renewPro = async () => {
       if (!isLicenseValid.value) return ElMessage.warning('请先激活有效的授权码')
+      
+      try {
+        await ElMessageBox.confirm(
+          '<span style="color:red;font-weight:bold;">⚠️ 续杯过程中将会强制关闭正在运行的 Cursor，请确保您的代码已经保存！</span><br><br>是否继续？',
+          '一键续杯',
+          { confirmButtonText: '确定续杯', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: true }
+        )
+      } catch {
+        return // 用户取消
+      }
+
       loading.operations = true
       try {
+        // ── Step 0: Ensure Cursor is killed first ──
+        if (window.electronAPI?.killCursorProcess) {
+          await window.electronAPI.killCursorProcess()
+          // 稍等一会儿让进程完全退出
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+
         const macAddress = await deviceService.getMacAddress()
         const oldEmail = currentAccount.email || 'no-current-account'
         const apiUrl = getAccountByCodeUrl(licenseCode.value, macAddress, oldEmail)
@@ -710,14 +728,20 @@ export default {
 
       if (val) {
         await ElMessageBox.alert(
-          '开启无感换号后会自动在账号额度用完后进行换号，无需手动续杯。' +
-          '<br><br>' +
-          '<span style="color:red;font-weight:bold;">⚠️ 首次开启会重启 Cursor 一次，之后无需重启，额度用完自动切换账号。</span>',
+          '开启无感换号后会自动在账号额度用完后进行换号，无需手动续杯。<br><br>' +
+          '<span style="color:red;font-weight:bold;">⚠️ 开启过程中将会强制关闭正在运行的 Cursor，请确保代码已保存！</span>',
           '无感换号',
-          { confirmButtonText: '知道了', type: 'info', dangerouslyUseHTMLString: true }
+          { confirmButtonText: '知道了', type: 'warning', dangerouslyUseHTMLString: true }
         )
 
         try {
+          // ── Step 0: Ensure Cursor is killed first ──
+          if (window.electronAPI?.killCursorProcess) {
+            await window.electronAPI.killCursorProcess()
+            // 稍等一会儿让进程完全退出
+            await new Promise(resolve => setTimeout(resolve, 1500))
+          }
+
           // ── Step 1: Fetch a new account ──
           if (!isLicenseValid.value) {
             ElMessage.warning('授权码无效，请先激活')
