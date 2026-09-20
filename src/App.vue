@@ -35,7 +35,7 @@
       <div class="path-config-section">
         <div class="config-header">
           <p class="config-desc">
-            当自动检测不到 Cursor.exe 时，可以在这里手动指定安装路径。
+            {{ isMac ? '当自动检测不到 Cursor 时，可以在这里手动指定 Cursor.app 应用程序路径。' : '当自动检测不到 Cursor.exe 时，可以在这里手动指定安装路径。' }}
           </p>
         </div>
         
@@ -59,7 +59,7 @@
               <span>选择中...</span>
             </template>
             <template v-else>
-              📂 选择 Cursor.exe 文件
+              {{ isMac ? '📂 选择 Cursor 应用程序 (.app)' : '📂 选择 Cursor.exe 文件' }}
             </template>
           </el-button>
           <el-button
@@ -343,6 +343,7 @@ export default {
     const showAgreementDialog = ref(false)
     const faqUrl = ref('https://www.yuque.com/u65041907/qqq1xv/esbwnffw2qt4sfof?singleDoc# 《常见问题》')
     const cursorExecutablePath = ref('')
+    const isMac = ref(false)
     const cursorEditorVersion = ref('未知')
     const appVersion = ref(APP_VERSION || '1.7.1')
     const encryptionEnabled = ref(false)
@@ -614,12 +615,9 @@ export default {
       } catch (e) {
         console.error('续杯失败:', e)
         // 检查是否是 Cursor 路径未找到的错误
-        if (e && e.message && (e.message.includes('Cursor executable not found') || e.message.includes('workbench.desktop.main.js not found') || e.message.includes('No cursor executable found'))) {
-          ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
-          // 如果是因为未找到路径导致的续杯失败，由于并没有真正续杯，最好把开关置回 false
-          seamlessEnabled.value = false
-        } else if (typeof e === 'string' && (e.includes('Cursor executable not found') || e.includes('workbench.desktop.main.js not found') || e.includes('No cursor executable found'))) {
-          ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+        const errStr = (e && e.message) ? e.message : String(e || '')
+        if (errStr.includes('Cursor executable not found') || errStr.includes('workbench.desktop.main.js not found') || errStr.includes('No cursor executable found')) {
+          ElMessage.error(`❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动选择 ${isMac.value ? 'Cursor.app' : 'Cursor.exe'} 路径`)
           seamlessEnabled.value = false
         } else {
           const errMsg = typeof e === 'string' ? e : (e.message || String(e))
@@ -695,7 +693,8 @@ export default {
       if (!window.electronAPI?.openFileDialog) return
       loading.pathSelection = true
       try {
-        const result = await window.electronAPI.openFileDialog({ title: '选择 Cursor.exe' })
+        const dialogTitle = isMac.value ? '选择 Cursor 应用程序 (Cursor.app)' : '选择 Cursor.exe'
+        const result = await window.electronAPI.openFileDialog({ title: dialogTitle })
         if (result.success) {
           cursorExecutablePath.value = result.filePath
           await storageService.saveCursorPath(result.filePath)
@@ -872,7 +871,7 @@ export default {
           
           // 检查是否是 Cursor 路径未找到的错误
           if (errorMsg.includes('Cursor executable not found') || errorMsg.includes('workbench.desktop.main.js not found') || errorMsg.includes('No cursor executable found')) {
-            ElMessage.error('❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动设置 Cursor.exe 路径')
+            ElMessage.error(`❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动选择 ${isMac.value ? 'Cursor.app' : 'Cursor.exe'} 路径`)
             seamlessEnabled.value = false
           } else {
             ElMessage.error('无感换号初始化失败: ' + errorMsg)
@@ -931,6 +930,16 @@ export default {
     }
 
     onMounted(async () => {
+      // 检查操作系统平台
+      try {
+        if (window.electronAPI?.getPlatform) {
+          const plat = await window.electronAPI.getPlatform()
+          isMac.value = plat === 'darwin'
+        } else if (typeof navigator !== 'undefined' && navigator.platform) {
+          isMac.value = navigator.platform.toLowerCase().includes('mac')
+        }
+      } catch (_) {}
+
       // 首次打开时检查用户协议
       checkAgreementStatus()
 
@@ -1025,7 +1034,7 @@ export default {
 
     return {
       licenseCode, licenseData, systemNotices, debugMode, showDebugPanel, showPathDialog,
-      showAgreementDialog, faqUrl, cursorExecutablePath, cursorEditorVersion, loading, currentAccount, quotaFull, encryptionEnabled,
+      showAgreementDialog, faqUrl, cursorExecutablePath, isMac, cursorEditorVersion, loading, currentAccount, quotaFull, encryptionEnabled,
       seamlessEnabled,
       cursorVersion, licenseStatus, isLicenseValid,
       expiryTime, expiryClass, daysRemaining, totalDays, usagePercentage, progressColor,

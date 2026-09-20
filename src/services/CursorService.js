@@ -249,15 +249,22 @@ class CursorService {
           updater: await api.pathJoin(homeDir, 'AppData', 'Local', 'cursor-updater'),
           productJson: await api.pathJoin(homeDir, 'AppData', 'Local', 'Programs', 'Cursor', 'resources', 'app', 'product.json')
         }
-      case 'darwin':
+      case 'darwin': {
+        const macExe = (await this.findCursorExecutable()) || '/Applications/Cursor.app/Contents/MacOS/Cursor'
+        let productJson = '/Applications/Cursor.app/Contents/Resources/app/product.json'
+        if (macExe && macExe.includes('.app')) {
+          const appRoot = macExe.substring(0, macExe.indexOf('.app') + 4)
+          productJson = `${appRoot}/Contents/Resources/app/product.json`
+        }
         return {
           storage: await api.pathJoin(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'storage.json'),
           sqlite: await api.pathJoin(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
           machineId: await api.pathJoin(homeDir, 'Library', 'Application Support', 'Cursor', 'machineId'),
-          executable: '/Applications/Cursor.app/Contents/MacOS/Cursor',
+          executable: macExe,
           updater: await api.pathJoin(homeDir, 'Library', 'Application Support', 'cursor-updater'),
-          productJson: '/Applications/Cursor.app/Contents/Resources/app/product.json'
+          productJson
         }
+      }
       case 'linux':
         return {
           storage: await api.pathJoin(homeDir, '.config', 'cursor', 'User', 'globalStorage', 'storage.json'),

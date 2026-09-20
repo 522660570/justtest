@@ -177,11 +177,29 @@ const tauriAPI = {
     await open(url)
   },
 
-  async openFileDialog(options) {
+  async openFileDialog(options = {}) {
     const { open } = await import('@tauri-apps/plugin-dialog')
+    let defaultFilters
+    try {
+      const platform = await this.getPlatform()
+      if (platform === 'win32') {
+        defaultFilters = [{ name: '可执行文件 (*.exe, *.lnk)', extensions: ['exe', 'lnk'] }]
+      } else if (platform === 'darwin') {
+        defaultFilters = [
+          { name: '应用程序 (*.app)', extensions: ['app'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      } else {
+        defaultFilters = [{ name: '所有文件', extensions: ['*'] }]
+      }
+    } catch (_) {
+      defaultFilters = [{ name: '所有文件', extensions: ['*'] }]
+    }
+
     const result = await open({
       multiple: false,
-      filters: options.filters || [{ name: 'Executable', extensions: ['exe', 'lnk'] }]
+      title: options.title,
+      filters: options.filters || defaultFilters
     })
     return { success: !!result, filePath: result }
   },

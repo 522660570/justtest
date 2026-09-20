@@ -280,6 +280,25 @@ pub fn start_cursor() -> Result<serde_json::Value, String> {
     let exe_path = process::find_cursor_executable()?;
     let exe_path_clone = exe_path.clone();
     std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        {
+            let p = std::path::Path::new(&exe_path_clone);
+            let mut app_bundle = None;
+            let mut dir = p;
+            while let Some(parent) = dir.parent() {
+                if dir.extension().map(|e| e == "app").unwrap_or(false) {
+                    app_bundle = Some(dir.to_string_lossy().to_string());
+                    break;
+                }
+                dir = parent;
+            }
+
+            if let Some(app) = app_bundle {
+                ProcessCommand::new("open").args(["-a", &app]).spawn().ok();
+                return;
+            }
+        }
+
         let mut cmd = ProcessCommand::new(&exe_path_clone);
         // 设置工作目录为 Cursor 可执行文件所在目录，避免路径相关问题
         if let Some(parent) = std::path::Path::new(&exe_path_clone).parent() {

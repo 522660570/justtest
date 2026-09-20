@@ -48,7 +48,7 @@ pub fn kill_cursor() -> Result<String, String> {
     let cmd = if cfg!(target_os = "windows") {
         "taskkill /F /IM Cursor.exe"
     } else if cfg!(target_os = "macos") {
-        "pkill -9 -f 'Cursor.app'"
+        "pkill -9 -f 'Cursor.app' ; pkill -9 -x Cursor"
     } else {
         "pkill -9 -f cursor"
     };
@@ -88,67 +88,96 @@ pub fn read_custom_cursor_path() -> Option<String> {
     Some(custom_path)
 }
 
+/// 将可能的用户输入路径（如 Cursor.app 目录、安装目录或可执行文件本身）转换为实际的二进制可执行文件路径
+pub fn resolve_cursor_executable(path_str: &str) -> Option<String> {
+    if path_str.is_empty() {
+        return None;
+    }
+    let p = std::path::Path::new(path_str);
+    if !p.exists() {
+        return None;
+    }
+
+    if cfg!(target_os = "macos") {
+        // 1. 如果直接是指向真正的二进制文件
+        if p.is_file() {
+            return Some(p.to_string_lossy().to_string());
+        }
+        // 2. 如果是 Cursor.app 目录
+        let app_exe = p.join("Contents").join("MacOS").join("Cursor");
+        if app_exe.exists() {
+            return Some(app_exe.to_string_lossy().to_string());
+        }
+        // 3. 可能是 .app 内的子目录，向上追溯查找
+        let mut dir = p;
+        while let Some(parent) = dir.parent() {
+            if dir.extension().map(|e| e == "app").unwrap_or(false) {
+                let macos_exe = dir.join("Contents").join("MacOS").join("Cursor");
+                if macos_exe.exists() {
+                    return Some(macos_exe.to_string_lossy().to_string());
+                }
+            }
+            dir = parent;
+        }
+    } else if cfg!(target_os = "windows") {
+        if p.is_file() {
+            return Some(p.to_string_lossy().to_string());
+        }
+        let candidates = [
+            p.join("Cursor.exe"),
+            p.parent().unwrap_or(p).join("Cursor.exe"),
+        ];
+        for c in &candidates {
+            if c.exists() && c.is_file() {
+                return Some(c.to_string_lossy().to_string());
+            }
+        }
+        if let Some(resources) = p.parent() {
+            if let Some(root) = resources.parent() {
+                let exe = root.join("Cursor.exe");
+                if exe.exists() && exe.is_file() {
+                    return Some(exe.to_string_lossy().to_string());
+                }
+            }
+        }
+    } else {
+        // Linux
+        if p.is_file() {
+            return Some(p.to_string_lossy().to_string());
+        }
+        let exe = p.join("cursor");
+        if exe.exists() && exe.is_file() {
+            return Some(exe.to_string_lossy().to_string());
+        }
+    }
+
+    // fallback: 如果本身是文件，直接返回
+    if p.is_file() {
+        Some(p.to_string_lossy().to_string())
+    } else {
+        None
+    }
+}
+
 /// 查找 Cursor 可执行文件路径
 /// 优先使用 custom_path 参数（如果提供），否则从配置文件读取自定义路径，
 /// 最后再按默认路径搜索。支持 Windows / macOS / Linux 全平台。
 pub fn find_cursor_executable_with_custom(custom_path: Option<&str>) -> Result<String, String> {
     // 1. 优先使用传入的自定义路径
     if let Some(path) = custom_path {
-        if !path.is_empty() && std::path::Path::new(path).exists() {
-            return Ok(path.to_string());
+        if let Some(resolved) = resolve_cursor_executable(path) {
+            return Ok(resolved);
         }
     }
 
     // 2. 从配置文件读取自定义路径
     if let Some(config_path) = read_custom_cursor_path() {
-        if std::path::Path::new(&config_path).exists() {
-            return Ok(config_path);
+        if let Some(resolved) = resolve_cursor_executable(&config_path) {
+            return Ok(resolved);
         }
-        // 自定义路径可能是目录，尝试向下查找可执行文件
-        let p = std::path::Path::new(&config_path);
-        if cfg!(target_os = "windows") {
-            // 可能传入的是 resources/app 目录或安装根目录
-            let candidates = [
-                p.join("Cursor.exe"),
-                p.parent().unwrap_or(p).join("Cursor.exe"),
-            ];
-            for c in &candidates {
-                if c.exists() {
-                    return Ok(c.to_string_lossy().to_string());
-                }
-            }
-            // resources/app -> resources -> Cursor 根目录
-            if let Some(resources) = p.parent() {
-                if let Some(root) = resources.parent() {
-                    let exe = root.join("Cursor.exe");
-                    if exe.exists() {
-                        return Ok(exe.to_string_lossy().to_string());
-                    }
-                }
-            }
-        } else if cfg!(target_os = "macos") {
-            // 可能是 .app 内部路径，向上查找 Cursor.app
-            let mut dir = p;
-            while let Some(parent) = dir.parent() {
-                if dir.extension().map(|e| e == "app").unwrap_or(false) {
-                    let macos_exe = dir.join("Contents").join("MacOS").join("Cursor");
-                    if macos_exe.exists() {
-                        return Ok(macos_exe.to_string_lossy().to_string());
-                    }
-                }
-                dir = parent;
-            }
-        } else {
-            // Linux: 尝试在目录中查找 cursor 可执行文件
-            let exe = p.join("cursor");
-            if exe.exists() {
-                return Ok(exe.to_string_lossy().to_string());
-            }
-        }
-        // 配置的路径无效，继续 fallback 到默认搜索
     }
 
-    // 3. 默认路径搜索（原有逻辑）
+    // 3. 默认路径搜索
     if cfg!(target_os = "windows") {
         let paths = [
             format!("{}\\AppData\\Local\\Programs\\Cursor\\Cursor.exe", std::env::var("USERPROFILE").unwrap_or_default()),
@@ -170,12 +199,48 @@ pub fn find_cursor_executable_with_custom(custom_path: Option<&str>) -> Result<S
         }
         Err("Cursor executable not found".into())
     } else if cfg!(target_os = "macos") {
-        let path = "/Applications/Cursor.app/Contents/MacOS/Cursor";
-        if std::path::Path::new(path).exists() {
-            Ok(path.into())
-        } else {
-            Err("Cursor not found at /Applications".into())
+        let mut macos_candidates = vec![
+            "/Applications/Cursor.app/Contents/MacOS/Cursor".to_string(),
+        ];
+        if let Ok(home) = std::env::var("HOME") {
+            macos_candidates.push(format!("{}/Applications/Cursor.app/Contents/MacOS/Cursor", home));
         }
+        for p in &macos_candidates {
+            if std::path::Path::new(p).exists() {
+                return Ok(p.clone());
+            }
+        }
+
+        // 尝试从正在运行的进程中探测 Cursor 路径
+        if let Ok(out) = Command::new("pgrep").args(["-f", "Cursor.app"]).output() {
+            let pids = String::from_utf8_lossy(&out.stdout);
+            for pid in pids.lines().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                if let Ok(comm_out) = Command::new("ps").args(["-p", pid, "-o", "comm="]).output() {
+                    let exe_line = String::from_utf8_lossy(&comm_out.stdout).trim().to_string();
+                    if !exe_line.is_empty() && std::path::Path::new(&exe_line).exists() {
+                        if exe_line.contains("Cursor") {
+                            return Ok(exe_line);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 尝试使用 mdfind 定位 Cursor.app
+        if let Ok(out) = Command::new("mdfind").args(["kMDItemCFBundleIdentifier == 'com.todesktop.230313mzl4w4u92' || kMDItemFSName == 'Cursor.app'"]).output() {
+            let mdfind_res = String::from_utf8_lossy(&out.stdout);
+            for line in mdfind_res.lines() {
+                let trimmed = line.trim();
+                if trimmed.ends_with(".app") {
+                    let exe = std::path::Path::new(trimmed).join("Contents").join("MacOS").join("Cursor");
+                    if exe.exists() {
+                        return Ok(exe.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+
+        Err("Cursor not found at /Applications or ~/Applications".into())
     } else {
         // Linux
         let paths = [
@@ -224,5 +289,34 @@ pub fn find_cursor_db() -> Result<Vec<String>, String> {
         Err("No Cursor database found".into())
     } else {
         Ok(found)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_cursor_executable_empty() {
+        assert!(resolve_cursor_executable("").is_none());
+        assert!(resolve_cursor_executable("non_existent_path_12345").is_none());
+    }
+
+    #[test]
+    fn test_resolve_cursor_executable_file() {
+        let temp = std::env::temp_dir().join(format!("cursor_proc_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let fake_exe = temp.join("Cursor.exe");
+        std::fs::write(&fake_exe, "binary").unwrap();
+
+        // 传入文件自身
+        let res = resolve_cursor_executable(&fake_exe.to_string_lossy());
+        assert!(res.is_some());
+
+        // 传入包含该 exe 的目录
+        let res_dir = resolve_cursor_executable(&temp.to_string_lossy());
+        assert!(res_dir.is_some());
+
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

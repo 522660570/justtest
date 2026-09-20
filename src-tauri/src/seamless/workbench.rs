@@ -7,74 +7,95 @@ const BACKUP_SUFFIX: &str = ".backup.xubei";
 
 static INJECTED: Mutex<bool> = Mutex::new(false);
 
-fn find_workbench_path() -> Result<PathBuf, String> {
-    let exe = crate::process::find_cursor_executable()?;
-    let exe_path = std::path::Path::new(&exe);
-
-    // 策略1: 从 Cursor 可执行文件路径推导 workbench.desktop.main.js 位置
-    // Cursor.exe is at .../Cursor/Cursor.exe
-    // workbench.desktop.main.js is at .../Cursor/resources/app/out/vs/workbench/
-    if let Some(parent) = exe_path.parent() {
-        let js = parent.join("resources")
-            .join("app")
-            .join("out")
-            .join("vs")
-            .join("workbench")
-            .join("workbench.desktop.main.js");
-        if js.exists() {
-            return Ok(js);
+fn probe_workbench_from_path(start_path: &std::path::Path) -> Option<PathBuf> {
+    let mut current: Option<&std::path::Path> = Some(start_path);
+    let mut depth = 0;
+    while let Some(dir) = current {
+        if depth > 6 {
+            break;
         }
-    }
 
-    // 策略2: 如果自定义路径指向 resources/app 目录，直接查找
-    let custom_path = crate::process::read_custom_cursor_path();
-    if let Some(ref custom) = custom_path {
-        let p = std::path::Path::new(custom);
-        // 向上查找 resources/app 目录
-        let search_dirs: Vec<PathBuf> = vec![
-            p.to_path_buf(),
-            p.parent().unwrap_or(p).to_path_buf(),
-            p.parent().and_then(|pp| pp.parent()).unwrap_or(p).to_path_buf(),
+        #[cfg(target_os = "macos")]
+        let candidates = [
+            // macOS: Contents/Resources/app/...
+            dir.join("Contents").join("Resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("Resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("workbench").join("workbench.desktop.main.js"),
+            dir.join("workbench.desktop.main.js"),
         ];
-        for dir in &search_dirs {
-            let js = dir.join("resources")
-                .join("app")
-                .join("out")
-                .join("vs")
-                .join("workbench")
-                .join("workbench.desktop.main.js");
-            if js.exists() {
-                return Ok(js);
+
+        #[cfg(not(target_os = "macos"))]
+        let candidates = [
+            // Windows / Linux: resources/app/...
+            dir.join("resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("Contents").join("Resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("Resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("out").join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("vs").join("workbench").join("workbench.desktop.main.js"),
+            dir.join("workbench").join("workbench.desktop.main.js"),
+            dir.join("workbench.desktop.main.js"),
+        ];
+
+        for c in &candidates {
+            if c.exists() && c.is_file() {
+                return Some(c.clone());
             }
         }
 
-        // macOS: .app/Contents/Resources/app/out/vs/workbench/
-        if cfg!(target_os = "macos") {
-            let mut dir = p;
-            while let Some(parent) = dir.parent() {
-                if dir.extension().map(|e| e == "app").unwrap_or(false) {
-                    let js = dir.join("Contents")
-                        .join("Resources")
-                        .join("app")
-                        .join("out")
-                        .join("vs")
-                        .join("workbench")
-                        .join("workbench.desktop.main.js");
-                    if js.exists() {
-                        return Ok(js);
-                    }
-                }
-                dir = parent;
+        current = dir.parent();
+        depth += 1;
+    }
+    None
+}
+
+fn find_workbench_path() -> Result<PathBuf, String> {
+    // 策略1: 优先从检测到的 Cursor 可执行文件路径推导
+    if let Ok(exe) = crate::process::find_cursor_executable() {
+        let exe_path = std::path::Path::new(&exe);
+        if let Some(found) = probe_workbench_from_path(exe_path) {
+            return Ok(found);
+        }
+    }
+
+    // 策略2: 从用户可能配置的自定义路径推导
+    let custom_path = crate::process::read_custom_cursor_path();
+    if let Some(ref custom) = custom_path {
+        let p = std::path::Path::new(custom);
+        if let Some(found) = probe_workbench_from_path(p) {
+            return Ok(found);
+        }
+    }
+
+    // 策略3: macOS 常见默认安装位置 fallback
+    #[cfg(target_os = "macos")]
+    {
+        let macos_defaults = [
+            "/Applications/Cursor.app",
+            "/Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
+        ];
+        for d in &macos_defaults {
+            let p = std::path::Path::new(d);
+            if let Some(found) = probe_workbench_from_path(p) {
+                return Ok(found);
+            }
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let user_mac = format!("{}/Applications/Cursor.app", home);
+            let p = std::path::Path::new(&user_mac);
+            if let Some(found) = probe_workbench_from_path(p) {
+                return Ok(found);
             }
         }
     }
 
     // 所有策略均失败
-    let tried_path = exe_path.parent()
-        .map(|p| p.join("resources").join("app").join("out").join("vs").join("workbench").join("workbench.desktop.main.js"))
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    Err(format!("workbench.desktop.main.js not found. Tried: {}. Custom path: {:?}", tried_path, custom_path))
+    let tried_info = format!("custom_path={:?}", custom_path);
+    Err(format!("workbench.desktop.main.js not found. Tried probing ancestors. Context: {}", tried_info))
 }
 
 fn injection_script(port: u16) -> String {
@@ -306,4 +327,70 @@ pub fn is_injected() -> Result<bool, String> {
     let path = find_workbench_path()?;
     let content = fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))?;
     Ok(content.contains(SEAMLESS_MARKER))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_probe_workbench_macos_structure() {
+        let temp = std::env::temp_dir().join(format!("cursor_test_mac_{}", uuid::Uuid::new_v4()));
+        let macos_dir = temp.join("Cursor.app").join("Contents").join("MacOS");
+        let resources_dir = temp.join("Cursor.app").join("Contents").join("Resources").join("app").join("out").join("vs").join("workbench");
+        fs::create_dir_all(&macos_dir).unwrap();
+        fs::create_dir_all(&resources_dir).unwrap();
+
+        let fake_exe = macos_dir.join("Cursor");
+        fs::write(&fake_exe, "fake binary").unwrap();
+
+        let target_js = resources_dir.join("workbench.desktop.main.js");
+        fs::write(&target_js, "/* fake workbench */").unwrap();
+
+        // 1. 从二进制可执行文件路径测试向上探测
+        let found = probe_workbench_from_path(&fake_exe);
+        assert!(found.is_some(), "应当能从 Contents/MacOS/Cursor 找到 Resources 目录下的 workbench");
+        assert!(found.as_ref().unwrap().exists());
+        assert_eq!(
+            fs::read_to_string(found.unwrap()).unwrap(),
+            "/* fake workbench */"
+        );
+
+        // 2. 从 Cursor.app 目录测试探测
+        let found_app = probe_workbench_from_path(&temp.join("Cursor.app"));
+        assert!(found_app.is_some(), "应当能从 Cursor.app 找到 workbench");
+        assert!(found_app.as_ref().unwrap().exists());
+        assert_eq!(
+            fs::read_to_string(found_app.unwrap()).unwrap(),
+            "/* fake workbench */"
+        );
+
+        // 清理临时目录
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn test_probe_workbench_windows_structure() {
+        let temp = std::env::temp_dir().join(format!("cursor_test_win_{}", uuid::Uuid::new_v4()));
+        let install_dir = temp.join("Cursor");
+        let resources_dir = install_dir.join("resources").join("app").join("out").join("vs").join("workbench");
+        fs::create_dir_all(&resources_dir).unwrap();
+
+        let fake_exe = install_dir.join("Cursor.exe");
+        fs::write(&fake_exe, "fake exe").unwrap();
+
+        let target_js = resources_dir.join("workbench.desktop.main.js");
+        fs::write(&target_js, "/* fake workbench */").unwrap();
+
+        // 从 Cursor.exe 测试探测
+        let found = probe_workbench_from_path(&fake_exe);
+        assert!(found.is_some(), "应当能从 Cursor.exe 找到 resources 目录下的 workbench");
+        assert!(found.as_ref().unwrap().exists());
+        assert_eq!(
+            fs::read_to_string(found.unwrap()).unwrap(),
+            "/* fake workbench */"
+        );
+
+        let _ = fs::remove_dir_all(&temp);
+    }
 }
