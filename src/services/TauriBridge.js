@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+﻿import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { homeDir } from '@tauri-apps/api/path'
 
@@ -245,6 +245,18 @@ const tauriAPI = {
 
   async restoreWorkbench() {
     return await invoke('restore_workbench')
+  },
+
+  async enableSeamlessPatch(token) {
+    return await invoke('enable_seamless_patch', { token })
+  },
+
+  async disableSeamlessPatch() {
+    return await invoke('disable_seamless_patch')
+  },
+
+  async getSeamlessPatchStatus() {
+    return await invoke('get_seamless_patch_status')
   },
 
   async getSeamlessStatus() {

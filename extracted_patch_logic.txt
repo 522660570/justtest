@@ -1,0 +1,107 @@
+﻿�失效）
+[步骤7] 找到 main.js: �
+[步骤7] main.js 无需修补（可能已修补过或正则未匹配）[步骤7] ✓ main.js 修补成功（移除 ?? 硬编码 fallback）$[步骤7] ✗ main.js 修补失败: �
+
+main.js 修补失败: �
+机器码已重置（部分步骤有警告），请点击无感换号机器码完全重置成功，请点击无感换号无法确定storage.json路径
+未找到配置文件: �
+
+e
+Y@
+
+
+
+
+
+
+
+
+
+
+
+'
+
+
+,
+
+
+backups%Y-%m-%d_%H-%M-%S
+storage.json.backup_�
+storage.json机器码重置成功
+storage.json 已更新: �
+
+storage.json 写入失败: �
+INSERT INTO ItemTable (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2mappingsolde
+Y@
+
+
+
+
+
+
+
+
+
+
+
+�
+
+
+
+
+
+
+
+[Reset] override file written: �
+ bytes, �2 cumulative mapping(s) (includes history), path = �
+([Reset] ✗ override file write FAILED: �
+,(\s*[}\]])
+
+�
+Y@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+0
+
+
+$1
+
+
+
+
+
+�
+Y@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&
+
+
+ca.keyunlockca.crt=HKCU\Software\Microsoft\SystemCertificates\Root\Certificates\�
+BEGIN CERTIFICATEEND CERTIFICATE无法定位 Cursor settings.json 路径json.tmpdeleteHKCU\Environment/

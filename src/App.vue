@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div id="app">
     <!-- 自定义标题栏 -->
     <CustomTitleBar />
@@ -269,11 +269,37 @@
                 </div>
               </div>
 
+              <!-- ⚡ 激活无感换号（底层环境注入）独立开关 -->
+              <div class="seamless-toggle-container main-patch-container">
+                <div class="seamless-toggle-row">
+                  <div class="seamless-toggle-label">
+                    <span class="label-text">⚡ 激活无感换号</span>
+                    <span class="label-desc">
+                      <el-tag
+                        size="small"
+                        :type="isMainPatched ? 'success' : 'info'"
+                        style="margin-right:4px;font-size:11px;"
+                      >{{ isMainPatched ? '已激活' : '未激活' }}</el-tag>
+                      必须先激活 · 才能换号
+                    </span>
+                  </div>
+                  <el-button
+                    :type="isMainPatched ? 'danger' : 'primary'"
+                    size="small"
+                    :loading="loadingPatch"
+                    @click="toggleMainPatch"
+                    class="patch-toggle-btn"
+                  >
+                    {{ isMainPatched ? '还原' : '激活' }}
+                  </el-button>
+                </div>
+              </div>
+
               <!-- 无感换号开关 -->
               <div class="seamless-toggle-container">
                 <div class="seamless-toggle-row">
                   <div class="seamless-toggle-label">
-                    <span class="label-text">无感换号</span>
+                    <span class="label-text">自动换号</span>
                     <span class="label-desc">额度用完后自动续杯</span>
                   </div>
                   <el-switch
@@ -348,6 +374,9 @@ export default {
     const appVersion = ref(APP_VERSION || '1.7.1')
     const encryptionEnabled = ref(false)
     const seamlessEnabled = ref(false)
+    // ⚡ 激活无感换号 - 底层环境注入状态
+    const isMainPatched = ref(false)
+    const loadingPatch = ref(false)
     let autoSwitchInProgress = false
     
     const SEAMLESS_STORAGE_KEY = 'seamless_mode_enabled'
@@ -568,19 +597,36 @@ export default {
 
         if (!seamlessStatus.injected) {
           // First time: inject workbench + restart Cursor to load the injection script
+          let injectSucceeded = false
           if (window.electronAPI?.injectWorkbench) {
-            await window.electronAPI.injectWorkbench()
+            try {
+              await window.electronAPI.injectWorkbench()
+              injectSucceeded = true
+            } catch (injectErr) {
+              console.warn('注入无感换号脚本失败，将降级为重启换号模式:', injectErr)
+              const injectErrStr = String((injectErr && injectErr.message) ? injectErr.message : (injectErr || ''))
+              if (injectErrStr.includes('Read-only file system') || injectErrStr.includes('os error 30') || injectErrStr.includes('只读文件系统') || injectErrStr.includes('Volumes')) {
+                ElMessage.warning('⚠️ 检测到 Cursor 位于只读卷（如 DMG 挂载镜像）或无写权限，已自动采用重启模式生效账号（建议将 Cursor 拖入“应用程序”文件夹）')
+              } else {
+                ElMessage.warning('⚠️ 无感换号注入未生效，已自动切换为重启模式生效账号')
+              }
+            }
           }
-          if (window.electronAPI?.pushPendingSwitch) {
-            await window.electronAPI.pushPendingSwitch(accessToken, refreshToken, email, sessionToken)
+
+          if (injectSucceeded) {
+            if (window.electronAPI?.pushPendingSwitch) {
+              await window.electronAPI.pushPendingSwitch(accessToken, refreshToken, email, sessionToken)
+            }
+            ElMessage.success('✅ 换号成功！首次需要重启 Cursor 以激活无感换号...')
+          } else {
+            ElMessage.success('✅ 换号成功！正在重启 Cursor 使新账号生效...')
           }
-          ElMessage.success('✅ 换号成功！首次需要重启 Cursor 以激活无感换号...')
           
-          // 首次注入：检查 Cursor 是否在运行
+          // 首次注入或降级模式：检查 Cursor 是否在运行并重启/启动
           if (window.electronAPI?.checkCursorProcess) {
             const status = await window.electronAPI.checkCursorProcess()
             if (status.running) {
-              // Cursor 正在运行 → 重启以加载注入脚本
+              // Cursor 正在运行 → 重启以加载新账号
               if (window.electronAPI?.reloadCursorWindow) {
                 await window.electronAPI.reloadCursorWindow()
               }
@@ -722,14 +768,65 @@ export default {
       seamlessEnabled.value = false
     }
 
+    // ⚡ 激活无感换号 - 底层环境注入 & Pro权限解锁
+    // 复用项目统一的 window.electronAPI 桥接（TauriBridge.js 已注入）
+    const checkPatchStatus = async () => {
+      try {
+        if (window.electronAPI?.getSeamlessPatchStatus) {
+          const status = await window.electronAPI.getSeamlessPatchStatus()
+          isMainPatched.value = !!status?.is_patched
+        }
+      } catch (e) {
+        console.warn('[MainPatch] 查询补丁状态失败:', e)
+      }
+    }
+
+    const toggleMainPatch = async () => {
+      if (loadingPatch.value) return
+      loadingPatch.value = true
+      try {
+        if (!window.electronAPI) {
+          ElMessage.warning('当前运行在浏览器模式，无法注入，请使用打包版 exe')
+          return
+        }
+        if (isMainPatched.value) {
+          // 还原
+          await window.electronAPI.disableSeamlessPatch()
+          isMainPatched.value = false
+          ElMessage.success('✅ 已还原底层补丁，请重启 Cursor 生效')
+        } else {
+          // 激活：传入当前 licenseCode 作为 token
+          await window.electronAPI.enableSeamlessPatch(licenseCode.value || '')
+          isMainPatched.value = true
+          ElMessage.success('激活成功')
+        }
+      } catch (e) {
+        const msg = typeof e === 'string' ? e : (e.message || String(e))
+        if (msg.includes('not found') || msg.includes('未找到')) {
+          ElMessage.error('❌ 未找到 Cursor 安装路径，请先点击顶部"路径配置"手动指定')
+        } else {
+          ElMessage.error('❌ 操作失败: ' + msg)
+        }
+      } finally {
+        loadingPatch.value = false
+      }
+    }
+
     const handleSeamlessToggle = async (val) => {
       console.log('🔍 handleSeamlessToggle:', val)
 
       if (val) {
+        // 检查是否已激活底层注入
+        if (!isMainPatched.value) {
+          ElMessage.warning('请先点击"激活"按钮完成底层环境注入，再开启自动换号')
+          seamlessEnabled.value = false
+          return
+        }
+
         await ElMessageBox.alert(
-          '开启无感换号后会自动在账号额度用完后进行换号，无需手动续杯。<br><br>' +
+          '开启自动换号后会自动在账号额度用完后进行换号，无需手动续杯。<br><br>' +
           '<span style="color:red;font-weight:bold;">⚠️ 开启过程中将会强制关闭正在运行的 Cursor，请确保代码已保存！</span>',
-          '无感换号',
+          '自动换号',
           { confirmButtonText: '知道了', type: 'warning', dangerouslyUseHTMLString: true }
         )
 
@@ -813,71 +910,43 @@ export default {
             }
           }
 
-          // ── Step 4: Start HTTP server & push tokens ──
-          if (window.electronAPI?.startHttpServer) {
-            await window.electronAPI.startHttpServer(36529)
-          }
-          if (window.electronAPI?.pushPendingSwitch) {
-            await window.electronAPI.pushPendingSwitch(accessToken, refreshToken, email, sessionToken)
+          // ── Step 4: 写入 active_token（参考程序机制：注入脚本每500ms读取此文件获取 Bearer token）
+          // enableSeamlessPatch 同步写入 active_token + force_reconnect + 刷新 auto_switch_on 心跳
+          if (window.electronAPI?.enableSeamlessPatch) {
+            await window.electronAPI.enableSeamlessPatch(accessToken)
+            isMainPatched.value = true
           }
 
-          // ── Step 5: Inject workbench if needed, then ensure Cursor running ──
-          const seamlessStatus = window.electronAPI?.getSeamlessStatus
-            ? await window.electronAPI.getSeamlessStatus()
-            : { injected: false }
-
-          if (!seamlessStatus.injected) {
-            // 首次开启无感换号：注入脚本 + 启动/重启 Cursor
-            if (window.electronAPI?.injectWorkbench) {
-              await window.electronAPI.injectWorkbench()
-            }
-            ElMessage.info('首次开启无感换号，正在注入脚本...')
-            
-            // 检查 Cursor 是否在运行
-            if (window.electronAPI?.checkCursorProcess) {
-              const status = await window.electronAPI.checkCursorProcess()
-              if (status.running) {
-                // Cursor 正在运行 → 重启以加载注入脚本
-                if (window.electronAPI?.reloadCursorWindow) {
-                  await window.electronAPI.reloadCursorWindow()
-                  ElMessage.info('正在重启 Cursor 以加载注入脚本...')
-                }
-              } else {
-                // Cursor 未运行 → 直接启动
-                if (window.electronAPI?.startCursor) {
-                  await window.electronAPI.startCursor()
-                  ElMessage.info('Cursor 未运行，正在启动...')
-                }
+          // ── Step 5: 重启 Cursor 使新账号 + 新 active_token 生效 ──
+          if (window.electronAPI?.checkCursorProcess) {
+            const status = await window.electronAPI.checkCursorProcess()
+            if (status.running) {
+              if (window.electronAPI?.reloadCursorWindow) {
+                await window.electronAPI.reloadCursorWindow()
               }
-            }
-          } else {
-            // 已经注入，只需确保 Cursor 在运行（不重启）
-            if (window.electronAPI?.checkCursorProcess) {
-              const status = await window.electronAPI.checkCursorProcess()
-              if (!status.running && window.electronAPI?.startCursor) {
+            } else {
+              if (window.electronAPI?.startCursor) {
                 await window.electronAPI.startCursor()
-                ElMessage.info('Cursor 未运行，正在启动...')
-              } else if (status.running) {
-                ElMessage.success('✅ 无感换号已开启，Cursor 无需重启')
+                ElMessage.info('正在启动 Cursor...')
               }
             }
           }
 
+          ElMessage.success('✅ 自动换号已开启，额度用完后将自动续杯')
           await getCurrentAccount()
         } catch (e) {
-          console.warn('无感换号初始化失败:', e)
-          // 修复：Tauri 返回的错误可能是字符串，也可能是包含 message 的 Error 对象
+          console.warn('自动换号初始化失败:', e)
           const errorMsg = typeof e === 'string' ? e : (e.message || String(e))
-          
-          // 检查是否是 Cursor 路径未找到的错误
           if (errorMsg.includes('Cursor executable not found') || errorMsg.includes('workbench.desktop.main.js not found') || errorMsg.includes('No cursor executable found')) {
-            ElMessage.error(`❌ 未找到 Cursor 路径，请点击顶部"路径配置"手动选择 ${isMac.value ? 'Cursor.app' : 'Cursor.exe'} 路径`)
-            seamlessEnabled.value = false
+            ElMessage.error(`❌ 未找到 Cursor 路径，请点击顶部“路径配置”手动选择 ${isMac.value ? 'Cursor.app' : 'Cursor.exe'} 路径`)
           } else {
-            ElMessage.error('无感换号初始化失败: ' + errorMsg)
-            seamlessEnabled.value = false
+            ElMessage.error('自动换号初始化失败: ' + errorMsg)
           }
+          seamlessEnabled.value = false
         }
+      } else {
+        // 关闭自动换号
+        ElMessage.info('已关闭自动换号')
       }
     }
 
@@ -1030,17 +1099,23 @@ export default {
 
       // Seamless always starts OFF — no persistence
       seamlessEnabled.value = false
+
+      // ⚡ 检查底层环境注入状态（TauriBridge 初始化后再查）
+      // 用 nextTick + 短延迟确保 window.electronAPI 已就绪
+      setTimeout(() => checkPatchStatus(), 300)
     })
 
     return {
       licenseCode, licenseData, systemNotices, debugMode, showDebugPanel, showPathDialog,
       showAgreementDialog, faqUrl, cursorExecutablePath, isMac, cursorEditorVersion, loading, currentAccount, quotaFull, encryptionEnabled,
       seamlessEnabled,
+      isMainPatched, loadingPatch,
       cursorVersion, licenseStatus, isLicenseValid,
       expiryTime, expiryClass, daysRemaining, totalDays, usagePercentage, progressColor,
       todaySwitchCount, validateLicense, openPurchasePage, renewPro, openFaqUrl,
       forceRefreshUI, selectCursorPath, clearCursorPath, getCurrentAccount,
-      handleAgreementAgree, handleAgreementDisagree, handleSeamlessToggle
+      handleAgreementAgree, handleAgreementDisagree, handleSeamlessToggle,
+      toggleMainPatch
     }
   }
 }
@@ -1389,6 +1464,25 @@ export default {
 .seamless-toggle-container:hover {
   box-shadow: 0 4px 12px rgba(72, 187, 120, 0.12);
 }
+
+/* ⚡ 激活无感换号 - 底层注入容器（蓝紫色调，与无感换号绿色做区分） */
+.main-patch-container {
+  background: linear-gradient(145deg, #ebf4ff 0%, #e8eeff 100%) !important;
+  border-color: #b3d4ff !important;
+}
+.main-patch-container:hover {
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.15) !important;
+}
+.main-patch-container .label-text {
+  color: #1a3a6b !important;
+}
+.main-patch-container .label-desc {
+  color: #7bafd4 !important;
+}
+.patch-toggle-btn {
+  min-width: 60px;
+}
+
 .seamless-toggle-row {
   display: flex;
   align-items: center;
