@@ -292,7 +292,21 @@ const tauriAPI = {
     return await invoke('debug_quota_check')
   },
 
-  async quitApp() {
+  async startAutoSwitchMonitor({ licenseCode, oldEmail, apiBaseUrl, sqlitePath, storagePath }) {
+    return await invoke('start_auto_switch_monitor', {
+      licenseCode,
+      oldEmail,
+      apiBaseUrl,
+      sqlitePath,
+      storagePath,
+    })
+  },
+
+  async stopAutoSwitchMonitor() {
+    return await invoke('stop_auto_switch_monitor')
+  },
+
+    async quitApp() {
     const { exit } = await import('@tauri-apps/plugin-process')
     await exit(0)
   }

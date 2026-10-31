@@ -40,7 +40,7 @@ export default {
 <style scoped>
 .custom-title-bar {
   height: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #24364b;
   color: white;
   display: flex;
   align-items: center;
@@ -56,15 +56,16 @@ export default {
   align-items: center;
   width: 100%;
   height: 100%;
-  padding: 0 12px;
+  padding: 0 14px;
 }
 
 .app-title {
   display: flex;
   align-items: center;
-  font-size: 14px;
-  font-weight: 500;
-  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .15px;
+  gap: 7px;
 }
 
 .app-icon {
@@ -94,7 +95,7 @@ export default {
 }
 
 .control-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .control-btn:active {
@@ -109,12 +110,6 @@ export default {
   background: #c50e1f;
 }
 
-/* 深色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .custom-title-bar {
-    background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
-  }
-}
 </style>
 
 

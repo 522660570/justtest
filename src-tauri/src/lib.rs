@@ -1,4 +1,4 @@
-﻿mod commands;
+mod commands;
 mod cursor_db;
 mod machine_id;
 mod process;
@@ -87,6 +87,8 @@ pub fn run() {
             commands::reload_cursor_window,
             commands::push_pending_switch,
             commands::debug_quota_check,
+            commands::start_auto_switch_monitor,
+            commands::stop_auto_switch_monitor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

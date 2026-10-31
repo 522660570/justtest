@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Cursor续杯",
-        "width": 1100,
-        "height": 850,
+        "width": 860,
+        "height": 700,
         "minWidth": 860,
         "minHeight": 700,
         "resizable": true,

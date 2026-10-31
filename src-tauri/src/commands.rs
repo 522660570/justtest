@@ -1,4 +1,4 @@
-﻿use std::process::Command as ProcessCommand;
+use std::process::Command as ProcessCommand;
 use serde::Serialize;
 use uuid::Uuid;
 use sha2::Digest;
@@ -883,4 +883,24 @@ pub fn reload_cursor_window() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn debug_quota_check() -> Result<serde_json::Value, String> {
     seamless::http_server::check_quota_debug()
+}
+
+// ── 自动换号监控器 ──
+
+#[tauri::command]
+pub fn start_auto_switch_monitor(
+    license_code: String,
+    old_email: String,
+    api_base_url: String,
+    sqlite_path: String,
+    storage_path: String,
+) -> Result<serde_json::Value, String> {
+    seamless::auto_switch::start_monitor(license_code, old_email, api_base_url, sqlite_path, storage_path);
+    Ok(serde_json::json!({ "success": true }))
+}
+
+#[tauri::command]
+pub fn stop_auto_switch_monitor() -> serde_json::Value {
+    seamless::auto_switch::stop_monitor();
+    serde_json::json!({ "success": true })
 }
