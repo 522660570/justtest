@@ -1,6 +1,6 @@
 {
   "name": "cursor-manager-vue",
-  "version": "2.0.3",
+  "version": "2.0.5",
   "description": "Cursor AI账号管理工具",
   "author": "Li <522660570@qq.com>",
   "debugMode": false,
@@ -10,6 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@castleio/castle-js": "^2.8.5",
     "@element-plus/icons-vue": "^2.3.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
@@ -19,6 +20,7 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "axios": "^1.6.0",
     "element-plus": "^2.4.0",
+    "puppeteer-core": "^25.16.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {

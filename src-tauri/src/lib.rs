@@ -77,6 +77,7 @@ pub fn run() {
             commands::inject_workbench,
             commands::restore_workbench,
             commands::enable_seamless_patch,
+            commands::sync_active_token_only,
             commands::disable_seamless_patch,
             commands::get_seamless_patch_status,
             commands::get_seamless_status,

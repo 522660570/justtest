@@ -1,4 +1,4 @@
-﻿import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { homeDir } from '@tauri-apps/api/path'
 
@@ -251,6 +251,10 @@ const tauriAPI = {
     return await invoke('enable_seamless_patch', { token })
   },
 
+  async syncActiveTokenOnly(token) {
+    return await invoke('sync_active_token_only', { token })
+  },
+
   async disableSeamlessPatch() {
     return await invoke('disable_seamless_patch')
   },
@@ -306,7 +310,23 @@ const tauriAPI = {
     return await invoke('stop_auto_switch_monitor')
   },
 
-    async quitApp() {
+    onAutoSwitchLog(callback) {
+    if (isTauri) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen('auto_switch_log', (event) => callback(event.payload))
+      })
+    }
+  },
+
+  onAutoSwitchAccountUpdated(callback) {
+    if (isTauri) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen('auto_switch_account_updated', (event) => callback(event.payload))
+      })
+    }
+  },
+
+  async quitApp() {
     const { exit } = await import('@tauri-apps/plugin-process')
     await exit(0)
   }

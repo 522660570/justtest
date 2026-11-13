@@ -125,7 +125,14 @@ pub fn get_app_environment() -> serde_json::Value {
 
 #[tauri::command]
 pub fn get_debug_mode() -> bool {
-    false
+    // 读取 package.json 中的 debugMode 配置
+    let pkg_str = include_str!("../../package.json");
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(pkg_str) {
+        if let Some(d) = json.get("debugMode").and_then(|v| v.as_bool()) {
+            return d;
+        }
+    }
+    cfg!(debug_assertions)
 }
 
 // ── Config File ──
@@ -791,6 +798,17 @@ pub fn enable_seamless_patch(token: Option<String>) -> Result<serde_json::Value,
     Ok(serde_json::json!({ "success": true }))
 }
 
+/// 仅更新 active_token 文件，不重新注入脚本（供"自动换号"开启时使用）
+#[tauri::command]
+pub fn sync_active_token_only(token: String) -> Result<serde_json::Value, String> {
+    if token.trim().is_empty() {
+        return Err("token 不能为空".to_string());
+    }
+    seamless::main_patch::sync_active_token(&token)
+        .map_err(|e| format!("写入 active_token 失败: {}", e))?;
+    Ok(serde_json::json!({ "success": true }))
+}
+
 #[tauri::command]
 pub fn disable_seamless_patch() -> Result<serde_json::Value, String> {
     seamless::main_patch::restore_main_process()?;
@@ -889,13 +907,14 @@ pub fn debug_quota_check() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 pub fn start_auto_switch_monitor(
+    app: tauri::AppHandle,
     license_code: String,
     old_email: String,
     api_base_url: String,
     sqlite_path: String,
     storage_path: String,
 ) -> Result<serde_json::Value, String> {
-    seamless::auto_switch::start_monitor(license_code, old_email, api_base_url, sqlite_path, storage_path);
+    seamless::auto_switch::start_monitor(app, license_code, old_email, api_base_url, sqlite_path, storage_path);
     Ok(serde_json::json!({ "success": true }))
 }
 

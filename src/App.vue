@@ -680,11 +680,12 @@ export default {
         let email = null
         let hasAccessToken = false
         let isAuthenticated = false
-        
+        let accessToken = null
+
         await cursorService.initialize()
         const sqlitePath = cursorService.cursorPaths?.sqlite
         if (sqlitePath && window.electronAPI) {
-          const query = "SELECT value FROM ItemTable WHERE key IN ('cursorAuth/cachedSignUpType', 'cursorAuth/emails', 'cursorAuth/accessToken', 'cursorAuth/cachedEmail')"
+          const query = "SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/cachedSignUpType', 'cursorAuth/emails', 'cursorAuth/accessToken', 'cursorAuth/cachedEmail')"
           const results = await window.electronAPI.sqliteQuery(sqlitePath, query, [])
           if (results && results.length > 0) {
             for (const row of results) {
@@ -694,13 +695,19 @@ export default {
                   const match = strVal.match(/[\w.-]+@[\w.-]+\.\w+/)
                   if (match && !email) email = match[0]
                 }
-                if (strVal.includes('accessToken')) hasAccessToken = true
+                // 读取 accessToken 具体值（key 精确匹配）
+                if (row.key === 'cursorAuth/accessToken' && strVal.length > 20) {
+                  hasAccessToken = true
+                  accessToken = strVal
+                } else if (strVal.includes('accessToken')) {
+                  hasAccessToken = true
+                }
               } catch(e) {}
             }
           }
         }
         if (email || hasAccessToken) isAuthenticated = true
-        Object.assign(currentAccount, { email, hasAccessToken, isAuthenticated })
+        Object.assign(currentAccount, { email, hasAccessToken, isAuthenticated, accessToken })
       } catch (e) {
         console.error('获取账号失败:', e)
       } finally {
@@ -790,15 +797,17 @@ export default {
           return
         }
         if (isMainPatched.value) {
-          // 还原
+          // 还原：彻底移除底层注入脚本并重置状态
           await window.electronAPI.disableSeamlessPatch()
           isMainPatched.value = false
-          ElMessage.success('✅ 已还原底层补丁，请重启 Cursor 生效')
+          seamlessEnabled.value = false
+          ElMessage.success('已还原底层补丁，请重启 Cursor 恢复原生环境')
         } else {
-          // 激活：传入当前 licenseCode 作为 token
-          await window.electronAPI.enableSeamlessPatch(licenseCode.value || '')
+          // 激活：写入底层 main.js 补丁与 Auto 模型破解
+          const currentToken = currentAccount.accessToken || ''
+          await window.electronAPI.enableSeamlessPatch(currentToken)
           isMainPatched.value = true
-          ElMessage.success('激活成功')
+          ElMessage.success('激活成功！请重启 Cursor 生效底层环境')
         }
       } catch (e) {
         const msg = typeof e === 'string' ? e : (e.message || String(e))
@@ -816,147 +825,51 @@ export default {
       console.log('🔍 handleSeamlessToggle:', val)
 
       if (val) {
-        // 检查是否已激活底层注入
+        // 1. 检查是否已激活底层注入
         if (!isMainPatched.value) {
           ElMessage.warning('请先点击"激活"按钮完成底层环境注入，再开启自动换号')
           seamlessEnabled.value = false
           return
         }
 
-        await ElMessageBox.alert(
-          '开启自动换号后会自动在账号额度用完后进行换号，无需手动续杯。<br><br>' +
-          '<span style="color:red;font-weight:bold;">⚠️ 开启过程中将会强制关闭正在运行的 Cursor，请确保代码已保存！</span>',
-          '自动换号',
-          { confirmButtonText: '知道了', type: 'warning', dangerouslyUseHTMLString: true }
-        )
+        // 2. 检查授权码有效性
+        if (!isLicenseValid.value) {
+          ElMessage.warning('授权码无效，请先激活有效卡密')
+          seamlessEnabled.value = false
+          return
+        }
 
         try {
-          // ── Step 0: Ensure Cursor is killed first ──
-          if (window.electronAPI?.killCursorProcess) {
-            await window.electronAPI.killCursorProcess()
-            // 稍等一会儿让进程完全退出
-            await new Promise(resolve => setTimeout(resolve, 1500))
-          }
-
-          // ── Step 1: Fetch a new account ──
-          if (!isLicenseValid.value) {
-            ElMessage.warning('授权码无效，请先激活')
-            return
-          }
           if (!cursorService.cursorPaths) await cursorService.initialize()
-          const macAddress = await deviceService.getMacAddress()
-          const apiUrl = getAccountByCodeUrl(licenseCode.value, macAddress, currentAccount.email || 'no-current-account')
 
-          let accessToken, refreshToken, email, sessionToken
-          if (encryptionEnabled.value) {
-            const accountRes = await window.electronAPI.fetchAccountEncrypted(apiUrl)
-            if (!accountRes || !accountRes.success || !accountRes.accessToken) {
-              ElMessage.error('❌ 获取新账号失败')
-              return
-            }
-            accessToken = accountRes.accessToken
-            refreshToken = accountRes.refreshToken
-            email = accountRes.email
-            sessionToken = ''
-          } else {
-            const accountRes = await accountService.getAccountByCode(licenseCode.value, currentAccount.email || 'no-current-account')
-            if (!accountRes || !accountRes.success || !accountRes.data) {
-              ElMessage.error('❌ 获取新账号失败: ' + (accountRes?.error || '未知错误'))
-              return
-            }
-            const newAccount = accountRes.data
-            email = newAccount.email
-            accessToken = newAccount.accessToken || ''
-            refreshToken = newAccount.refreshToken || accessToken || ''
-            sessionToken = newAccount.sessionToken || newAccount.token || newAccount.WorkosCursorSessionToken
-          }
-
-          // ── Step 2: Write auth to SQLite ──
-          const sqlitePath = cursorService.cursorPaths?.sqlite
-          if (sqlitePath) {
-            const queries = [
-              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedEmail', email] },
-              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/cachedSignUpType', 'Auth_0'] },
-              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/isAuthenticated', 'true'] },
-              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursor.email', email] },
-              { sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursor.accessToken', accessToken] },
-            ]
-            if (accessToken) {
-              queries.push({ sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/accessToken', accessToken] })
-              queries.push({ sql: "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", params: ['cursorAuth/refreshToken', refreshToken] })
-            }
-            if (window.electronAPI?.sqliteBatchRun) {
-              await window.electronAPI.sqliteBatchRun(sqlitePath, queries)
+          // 3. 刷新账号信息，若当前已有明文 JWT 则同步至 active_token
+          await getCurrentAccount()
+          console.log('📋 当前账号:', currentAccount.email || '未知', '| accessToken长度:', currentAccount.accessToken?.length || 0)
+          if (currentAccount.accessToken && currentAccount.accessToken.includes('.') && !currentAccount.accessToken.startsWith('cursor-safe-storage:')) {
+            if (window.electronAPI?.syncActiveTokenOnly) {
+              await window.electronAPI.syncActiveTokenOnly(currentAccount.accessToken)
             }
           }
 
-          // ── Step 3: Write auth to storage.json ──
-          const storagePath = cursorService.cursorPaths?.storage
-          if (storagePath && window.electronAPI?.fsReadFile && window.electronAPI?.fsWriteFile) {
-            try {
-              const raw = await window.electronAPI.fsReadFile(storagePath)
-              const config = JSON.parse(raw)
-              Object.assign(config, {
-                'cursorAuth/cachedEmail': email,
-                'cursorAuth/accessToken': accessToken,
-                'cursorAuth/refreshToken': refreshToken,
-                'cursorAuth/cachedSignUpType': 'Auth_0',
-                'cursor.email': email,
-                'cursor.accessToken': accessToken,
-              })
-              await window.electronAPI.fsWriteFile(storagePath, JSON.stringify(config, null, 4))
-            } catch (e) {
-              console.warn('storage.json 写入失败（可跳过）:', e)
-            }
-          }
-
-          // ── Step 4: 写入 active_token（参考程序机制：注入脚本每500ms读取此文件获取 Bearer token）
-          // enableSeamlessPatch 同步写入 active_token + force_reconnect + 刷新 auto_switch_on 心跳
-          if (window.electronAPI?.enableSeamlessPatch) {
-            await window.electronAPI.enableSeamlessPatch(accessToken)
-            isMainPatched.value = true
-          }
-
-          // ── 启动 Rust 后台换号监控器（监听 quota_exhausted -> 自动换号） ──
+          // 4. 启动 Rust 后台无感换号监控器（自动维持 auto_switch_on 心跳 + 监听 quota_exhausted）
           if (window.electronAPI?.startAutoSwitchMonitor) {
             await window.electronAPI.startAutoSwitchMonitor({
               licenseCode: licenseCode.value,
-              oldEmail: email || currentAccount.email || 'no-current-account',
+              oldEmail: currentAccount.email || 'no-current-account',
               apiBaseUrl: API_CONFIG.BASE_URL,
               sqlitePath: cursorService.cursorPaths?.sqlite || '',
               storagePath: cursorService.cursorPaths?.storage || '',
             })
           }
 
-          // ── Step 5: 重启 Cursor 使新账号 + 新 active_token 生效 ──
-          if (window.electronAPI?.checkCursorProcess) {
-            const status = await window.electronAPI.checkCursorProcess()
-            if (status.running) {
-              if (window.electronAPI?.reloadCursorWindow) {
-                await window.electronAPI.reloadCursorWindow()
-              }
-            } else {
-              if (window.electronAPI?.startCursor) {
-                await window.electronAPI.startCursor()
-                ElMessage.info('正在启动 Cursor...')
-              }
-            }
-          }
-
-          ElMessage.success('✅ 自动换号已开启，额度用完后将自动续杯')
-          await getCurrentAccount()
+          ElMessage.success('✅ 自动换号已开启，将在额度用尽时无感续杯')
         } catch (e) {
-          console.warn('自动换号初始化失败:', e)
-          const errorMsg = typeof e === 'string' ? e : (e.message || String(e))
-          if (errorMsg.includes('Cursor executable not found') || errorMsg.includes('workbench.desktop.main.js not found') || errorMsg.includes('No cursor executable found')) {
-            ElMessage.error(`❌ 未找到 Cursor 路径，请点击顶部“路径配置”手动选择 ${isMac.value ? 'Cursor.app' : 'Cursor.exe'} 路径`)
-          } else {
-            ElMessage.error('自动换号初始化失败: ' + errorMsg)
-          }
+          console.warn('开启自动换号失败:', e)
+          ElMessage.error('开启自动换号失败: ' + (e.message || String(e)))
           seamlessEnabled.value = false
         }
       } else {
-        // 关闭自动换号
+        // 关闭自动换号：停止监控器并销毁 auto_switch_on 心跳
         if (window.electronAPI?.stopAutoSwitchMonitor) {
           await window.electronAPI.stopAutoSwitchMonitor()
         }
@@ -1073,7 +986,36 @@ export default {
           })
         }
       }
-      // 原前端 15s 轮询已替换为 Rust 后端毫秒级监听 ~/.cursor-tk/quota_exhausted 信号
+      // 监听自动换号后台日志并在控制台与界面实时展示
+      if (window.electronAPI?.onAutoSwitchLog) {
+        window.electronAPI.onAutoSwitchLog((data) => {
+          const colorMap = {
+            info: '#1890ff',
+            warn: '#faad14',
+            success: '#52c41a',
+            error: '#ff4d4f'
+          }
+          const color = colorMap[data.level] || '#1890ff'
+          console.log(`%c[自动换号 ${data.time}] ${data.message}`, `color:${color};font-weight:bold`)
+          if (data.level === 'success') {
+            ElMessage.success(data.message)
+          } else if (data.level === 'warn') {
+            ElMessage.warning(data.message)
+          } else if (data.level === 'error') {
+            ElMessage.error(data.message)
+          }
+        })
+      }
+
+      // 监听自动换号成功事件，自动刷新界面账号
+      if (window.electronAPI?.onAutoSwitchAccountUpdated) {
+        window.electronAPI.onAutoSwitchAccountUpdated(async (acc) => {
+          console.log('🔄 [自动换号] 收到账号更新通知，正在刷新当前账号信息...', acc)
+          await getCurrentAccount()
+        })
+      }
+
+            // 原前端 15s 轮询已替换为 Rust 后端毫秒级监听 ~/.cursor-tk/quota_exhausted 信号
 
       // Seamless always starts OFF — no persistence
       seamlessEnabled.value = false
